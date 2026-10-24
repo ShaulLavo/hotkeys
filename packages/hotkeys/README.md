@@ -2,7 +2,7 @@
 
 Keyboard shortcut registration, chords, context-aware keymaps, and display formatting for browser and terminal apps.
 
-Part of [Fregat hotkeys](https://github.com/ShaulLavo/fregat/tree/main/hotkeys).
+Part of [Fregat hotkeys](https://github.com/ShaulLavo/fregat/tree/main/packages/hotkeys).
 
 ## Install
 
@@ -33,13 +33,13 @@ export function disposeShortcuts() {
 - `formatForDisplay()` formats labels for the current platform.
 - `HotkeyRecorder` records a shortcut.
 
-[Every export](https://github.com/ShaulLavo/fregat/blob/main/hotkeys/packages/hotkeys/docs/api.md) · [Concepts](https://github.com/ShaulLavo/fregat/blob/main/hotkeys/packages/hotkeys/docs/concepts.md) · [Keymap rules](https://github.com/ShaulLavo/fregat/blob/main/hotkeys/packages/hotkeys/docs/keymaps.md) · [Troubleshooting](https://github.com/ShaulLavo/fregat/blob/main/hotkeys/packages/hotkeys/docs/troubleshooting.md)
+[Every export](https://github.com/ShaulLavo/fregat/blob/main/packages/hotkeys/packages/hotkeys/docs/api.md) · [Concepts](https://github.com/ShaulLavo/fregat/blob/main/packages/hotkeys/packages/hotkeys/docs/concepts.md) · [Keymap rules](https://github.com/ShaulLavo/fregat/blob/main/packages/hotkeys/packages/hotkeys/docs/keymaps.md) · [Troubleshooting](https://github.com/ShaulLavo/fregat/blob/main/packages/hotkeys/packages/hotkeys/docs/troubleshooting.md)
 
 ## In the hotkeys family
 
 The core package has framework-neutral key matching and browser and terminal adapters. Add `@fregat/react-hotkeys` to register shortcuts through React hooks.
 
-[Main README](https://github.com/ShaulLavo/fregat/blob/main/hotkeys/README.md)
+[Main README](https://github.com/ShaulLavo/fregat/blob/main/packages/hotkeys/README.md)
 
 ## Status
 
@@ -47,4 +47,4 @@ Version 0.0.x. The API can change between releases.
 
 ## License
 
-MIT. Forked from [TanStack Hotkeys](https://github.com/TanStack/hotkeys). [License](https://github.com/ShaulLavo/fregat/blob/main/hotkeys/packages/hotkeys/LICENSE)
+MIT. Forked from [TanStack Hotkeys](https://github.com/TanStack/hotkeys). [License](https://github.com/ShaulLavo/fregat/blob/main/packages/hotkeys/packages/hotkeys/LICENSE)

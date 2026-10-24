@@ -2,8 +2,8 @@
 <p align="center">Keyboard shortcuts for editors and complex apps.</p>
 <p align="center">
   <a href="https://github.com/ShaulLavo/fregat/actions/workflows/workspace-libraries.yml"><img src="https://github.com/ShaulLavo/fregat/actions/workflows/workspace-libraries.yml/badge.svg" alt="Workspace library checks" /></a>
-  <a href="https://github.com/ShaulLavo/fregat/blob/main/hotkeys/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license" /></a>
-  <a href="https://github.com/ShaulLavo/fregat/tree/main/hotkeys"><img src="https://img.shields.io/badge/install-source%20%2F%20workspace-blue" alt="Install from source or workspace" /></a>
+  <a href="https://github.com/ShaulLavo/fregat/blob/main/packages/hotkeys/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license" /></a>
+  <a href="https://github.com/ShaulLavo/fregat/tree/main/packages/hotkeys"><img src="https://img.shields.io/badge/install-source%20%2F%20workspace-blue" alt="Install from source or workspace" /></a>
 </p>
 <p align="center">
   <a href="packages/hotkeys/docs/concepts.md">Concepts</a> ·
@@ -76,7 +76,7 @@ Use the packages in the Fregat workspace:
 git clone https://github.com/ShaulLavo/fregat.git
 cd fregat
 bun install --frozen-lockfile
-bun run --cwd hotkeys build
+bun run --cwd packages/hotkeys build
 ```
 
 Import `@fregat/hotkeys` from a workspace consumer. The [development guide](https://github.com/ShaulLavo/fregat/blob/main/docs/development.md#workspace-libraries) explains source builds. Start with [concepts](packages/hotkeys/docs/concepts.md) for the model, or [`@fregat/hotkeys`](packages/hotkeys/README.md) for the simplest registration API.
@@ -93,8 +93,8 @@ The [lookup benchmark](packages/hotkeys/docs/performance.md) times a 255-binding
 
 ## Contributing and license
 
-Development happens in [Fregat](https://github.com/ShaulLavo/fregat/tree/main/hotkeys).
-This repository is a read-only mirror of its `hotkeys/` folder. Submit issues and pull requests to Fregat.
+Development happens in [Fregat](https://github.com/ShaulLavo/fregat/tree/main/packages/hotkeys).
+This repository is a read-only mirror of its `packages/hotkeys/` folder. Submit issues and pull requests to Fregat.
 Read the [contribution guide and AI policy](https://github.com/ShaulLavo/fregat/blob/main/CONTRIBUTING.md).
 
 [MIT](LICENSE), with Tanner Linsley's original copyright notice retained.

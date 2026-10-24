@@ -85,7 +85,7 @@ type EditorTrie = {
 }
 
 async function loadEditorTrie(): Promise<EditorTrie | null> {
-  const path = new URL('../../../../packages/editor-core/src/keymap/trie.ts', import.meta.url)
+  const path = new URL('../../../../../packages/editor-core/src/keymap/trie.ts', import.meta.url)
   try {
     return (await import(path.href)) as EditorTrie
   } catch {

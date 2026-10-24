@@ -11,7 +11,7 @@
     "shortcuts",
     "typescript"
   ],
-  "homepage": "https://github.com/ShaulLavo/fregat/tree/main/hotkeys",
+  "homepage": "https://github.com/ShaulLavo/fregat/tree/main/packages/hotkeys",
   "bugs": {
     "url": "https://github.com/ShaulLavo/fregat/issues"
   },
@@ -19,7 +19,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/ShaulLavo/fregat.git",
-    "directory": "hotkeys/packages/react-hotkeys"
+    "directory": "packages/hotkeys/packages/react-hotkeys"
   },
   "files": [
     "dist",
