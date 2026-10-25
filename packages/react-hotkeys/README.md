@@ -1,16 +1,12 @@
 # @fregat/react-hotkeys
 
-React hooks for registering, recording, and displaying keyboard shortcuts with @fregat/hotkeys.
-
-Part of [Fregat hotkeys](https://github.com/ShaulLavo/fregat/tree/main/packages/hotkeys).
+React hooks for registering, recording, and displaying shortcuts with `@fregat/hotkeys`.
 
 ## Install
 
-Not on npm yet. Build it from source with the [workspace guide](https://github.com/ShaulLavo/fregat/blob/main/docs/development.md#workspace-libraries). Publishing is planned. It declares `react` and `react-dom` 18 or newer as peer dependencies, so it uses the copies your app already has.
+Install both commit-pinned tarballs from [hotkeys releases](https://github.com/ShaulLavo/hotkeys/releases), as described in the [installation guide](https://github.com/ShaulLavo/hotkeys/blob/main/docs/development.md#install). Supply `react` and `react-dom` 18 or newer in your app.
 
-## Usage
-
-Render this component in your React app.
+## Use
 
 ```tsx
 import { useHotkey, formatForDisplay } from '@fregat/react-hotkeys'
@@ -21,27 +17,6 @@ export function SaveButton({ onSave }: { onSave: () => void }) {
 }
 ```
 
-`Mod` is Command on macOS and Control elsewhere.
+[Hooks and API](https://github.com/ShaulLavo/hotkeys/blob/main/packages/hotkeys/docs/api.md) · [Keymap rules](https://github.com/ShaulLavo/hotkeys/blob/main/packages/hotkeys/docs/keymaps.md) · [Core](https://github.com/ShaulLavo/hotkeys/tree/main/packages/hotkeys)
 
-## API highlights
-
-- `useHotkey(keys, callback, options)` registers a shortcut for the component lifetime. Options match `register`, and `target` can be a ref.
-- `useHotkeySequence()` registers a chord.
-- `useHotkeyRecorder()` records a shortcut for a settings field.
-- `HotkeysProvider` sets hook defaults.
-
-[Exported API](https://github.com/ShaulLavo/fregat/blob/main/packages/hotkeys/packages/react-hotkeys/src/index.ts) · [Core API](https://github.com/ShaulLavo/fregat/blob/main/packages/hotkeys/packages/hotkeys/docs/api.md) · [Keymap rules](https://github.com/ShaulLavo/fregat/blob/main/packages/hotkeys/packages/hotkeys/docs/keymaps.md)
-
-## In the hotkeys family
-
-`@fregat/hotkeys` owns shortcut matching and dispatch. This optional package adds React hooks and re-exports the core API.
-
-[Main README](https://github.com/ShaulLavo/fregat/blob/main/packages/hotkeys/README.md)
-
-## Status
-
-Version 0.0.x. The API can change between releases.
-
-## License
-
-MIT. Forked from [TanStack Hotkeys](https://github.com/TanStack/hotkeys). [License](https://github.com/ShaulLavo/fregat/blob/main/packages/hotkeys/packages/react-hotkeys/LICENSE)
+[MIT](LICENSE). Forked from [TanStack Hotkeys](https://github.com/TanStack/hotkeys).

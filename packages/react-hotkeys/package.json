@@ -11,15 +11,15 @@
     "shortcuts",
     "typescript"
   ],
-  "homepage": "https://github.com/ShaulLavo/fregat/tree/main/packages/hotkeys",
+  "homepage": "https://github.com/ShaulLavo/hotkeys",
   "bugs": {
-    "url": "https://github.com/ShaulLavo/fregat/issues"
+    "url": "https://github.com/ShaulLavo/hotkeys/issues"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ShaulLavo/fregat.git",
-    "directory": "packages/hotkeys/packages/react-hotkeys"
+    "url": "git+https://github.com/ShaulLavo/hotkeys.git",
+    "directory": "packages/react-hotkeys"
   },
   "files": [
     "dist",
@@ -49,10 +49,10 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@fregat/hotkeys": "workspace:*",
     "@tanstack/react-store": "^0.11.1"
   },
   "devDependencies": {
+    "@fregat/hotkeys": "workspace:*",
     "@testing-library/react": "^16.3.3",
     "@types/react": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
@@ -63,6 +63,7 @@
     "vitest": "catalog:"
   },
   "peerDependencies": {
+    "@fregat/hotkeys": "0.0.3",
     "react": ">=18",
     "react-dom": ">=18"
   },
