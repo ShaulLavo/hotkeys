@@ -1,4 +1,4 @@
-import type { LOGICAL_ONLY_NAMED_KEYS, SHARED_NAMED_KEYS } from './_named-keys'
+import type { LOGICAL_ONLY_NAMED_KEYS, SHARED_NAMED_KEYS } from './_named-keys.js'
 
 /**
  * All supported modifier key names, including aliases.

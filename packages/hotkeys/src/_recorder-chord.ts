@@ -1,8 +1,8 @@
-import { normalizeKeyName } from './constants'
-import { keyInputFromKeyboardEvent } from './adapters/browser'
-import { isModifierKey, normalizeHotkeyFromParsed, parseKeyInput } from './parse'
-import type { RecorderKeyMode, RecorderOptions, RecorderRejection } from './recorder-options'
-import type { Hotkey } from './hotkey.types'
+import { normalizeKeyName } from './constants.js'
+import { keyInputFromKeyboardEvent } from './adapters/browser.js'
+import { isModifierKey, normalizeHotkeyFromParsed, parseKeyInput } from './parse.js'
+import type { RecorderKeyMode, RecorderOptions, RecorderRejection } from './recorder-options.js'
+import type { Hotkey } from './hotkey.types.js'
 
 /**
  * Converts a keydown to a replayable chord, preserving physical codes by default.

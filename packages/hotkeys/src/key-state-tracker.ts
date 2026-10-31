@@ -1,5 +1,5 @@
 import { Store } from '@tanstack/store'
-import { MODIFIER_KEYS, normalizeKeyName } from './constants'
+import { MODIFIER_KEYS, normalizeKeyName } from './constants.js'
 
 /**
  * State interface for the KeyStateTracker.

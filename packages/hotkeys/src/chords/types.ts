@@ -1,4 +1,4 @@
-import type { RegisterableHotkey } from '../hotkey.types'
+import type { RegisterableHotkey } from '../hotkey.types.js'
 
 export type KeyChord = readonly [RegisterableHotkey, ...RegisterableHotkey[]]
 export type KeymapPlatform = 'mac' | 'windows' | 'linux'

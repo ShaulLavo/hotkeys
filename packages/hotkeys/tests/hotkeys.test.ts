@@ -7,6 +7,7 @@ afterEach(() => {
   registry?.dispose()
   vi.restoreAllMocks()
   document.body.replaceChildren()
+  Reflect.deleteProperty(document, 'visibilityState')
 })
 function setup() {
   registry = createHotkeyRegistry()
@@ -142,6 +143,47 @@ it('fires once per press with requireReset', () => {
   press(document, 'r', {}, 'keyup')
   press(document, 'r', { ctrlKey: true })
   expect(callback).toHaveBeenCalledTimes(2)
+})
+
+it.each(['blur', 'hidden', 'releaseAll'] as const)(
+  're-arms requireReset after %s without a keyup',
+  (reason) => {
+    const callback = vi.fn()
+    const hotkeys = setup()
+    hotkeys.register('F8', callback, { requireReset: true })
+    press(document, 'F8')
+    press(document, 'F8', { repeat: true })
+    expect(callback).toHaveBeenCalledOnce()
+
+    if (reason === 'blur') window.dispatchEvent(new Event('blur'))
+    if (reason === 'hidden') {
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true })
+      document.dispatchEvent(new Event('visibilitychange'))
+      Reflect.deleteProperty(document, 'visibilityState')
+    }
+    if (reason === 'releaseAll') hotkeys.dispatcher.releaseAll()
+
+    expect(callback).toHaveBeenCalledOnce()
+    press(document, 'F8')
+    press(document, 'F8', { repeat: true })
+    expect(callback).toHaveBeenCalledTimes(2)
+    press(document, 'F8', {}, 'keyup')
+    press(document, 'F8')
+    expect(callback).toHaveBeenCalledTimes(3)
+  },
+)
+
+it('leaves requireReset shortcuts inactive after disposal', () => {
+  const callback = vi.fn()
+  const hotkeys = setup()
+  hotkeys.register('F8', callback, { requireReset: true })
+  press(document, 'F8')
+  hotkeys.dispose()
+  window.dispatchEvent(new Event('blur'))
+  hotkeys.dispatcher.releaseAll()
+  expect(press(document, 'F8').defaultPrevented).toBe(false)
+  expect(callback).toHaveBeenCalledOnce()
+  expect(hotkeys.registrations.state.size).toBe(0)
 })
 
 it('stops firing after unregister and counts triggers in the view', () => {

@@ -1,15 +1,15 @@
-import { isModifierKey } from '../parse'
-import { isPrintableKey } from '../_keyboard-event'
-import { buildKeymapTrie, trieStep } from './trie'
-import type { KeyInput } from '../key-input'
-import type { KeymapEdge, KeymapNode } from './trie'
+import { isModifierKey } from '../parse.js'
+import { isPrintableKey } from '../_keyboard-event.js'
+import { buildKeymapTrie, trieStep } from './trie.js'
+import type { KeyInput } from '../key-input.js'
+import type { KeymapEdge, KeymapNode } from './trie.js'
 import type {
   ChordOutcome,
   KeymapBinding,
   KeymapPlatform,
   KeymapSequenceEvent,
   PendingChordLabel,
-} from './types'
+} from './types.js'
 
 /** How the host applies the runtime's decisions to its own event. */
 export type KeyEffects<Source> = {

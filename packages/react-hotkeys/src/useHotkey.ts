@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import { detectPlatform, getHotkeyRegistry, normalizeRegisterableHotkey } from '@fregat/hotkeys'
-import { useDefaultHotkeysOptions } from './HotkeysProvider'
-import { isRef } from './utils'
+import { useDefaultHotkeysOptions } from './HotkeysProvider.js'
+import { isRef } from './utils.js'
 import type {
   HotkeyCallback,
   HotkeyOptions,

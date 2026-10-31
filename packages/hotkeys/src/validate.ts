@@ -1,6 +1,6 @@
-import { ALL_KEYS, MODIFIER_ALIASES, normalizeKeyName } from './constants'
-import { splitHotkeyParts } from './_keyboard-event'
-import type { Hotkey } from './hotkey.types'
+import { ALL_KEYS, MODIFIER_ALIASES, normalizeKeyName } from './constants.js'
+import { splitHotkeyParts } from './_keyboard-event.js'
+import type { Hotkey } from './hotkey.types.js'
 
 /**
  * Validates a hotkey string and returns any warnings or errors.

@@ -1,4 +1,4 @@
-import type { CanonicalModifier } from './key.types'
+import type { CanonicalModifier } from './key.types.js'
 
 // =============================================================================
 // Display Symbols

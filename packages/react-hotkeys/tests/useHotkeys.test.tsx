@@ -86,6 +86,47 @@ describe('useHotkeys', () => {
     expect(manager.registrations.state.size).toBe(0)
   })
 
+  it.each(['string', 'raw'] as const)(
+    'normalizes a %s hotkey with its per-definition platform',
+    (kind) => {
+      const callback = vi.fn()
+      const hotkey: UseHotkeyDefinition['hotkey'] =
+        kind === 'string' ? 'Control+S' : { key: 'S', ctrl: true }
+
+      renderHook(() =>
+        useHotkeys([{ hotkey, callback, options: { platform: 'mac' } }], { platform: 'linux' }),
+      )
+
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 's',
+          code: 'KeyS',
+          ctrlKey: true,
+          bubbles: true,
+        }),
+      )
+      expect(callback).toHaveBeenCalledTimes(1)
+
+      document.dispatchEvent(
+        new KeyboardEvent('keyup', {
+          key: 's',
+          code: 'KeyS',
+          ctrlKey: true,
+          bubbles: true,
+        }),
+      )
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 's',
+          code: 'KeyS',
+          metaKey: true,
+          bubbles: true,
+        }),
+      )
+      expect(callback).toHaveBeenCalledTimes(1)
+    },
+  )
+
   it('should handle an empty array as a no-op', () => {
     renderHook(() => useHotkeys([]))
 

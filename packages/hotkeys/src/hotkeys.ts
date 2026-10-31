@@ -1,16 +1,16 @@
 import { Store } from '@tanstack/store'
-import { createBrowserDispatcher } from './adapters/browser-dispatcher'
-import { keyInputFromKeyboardEvent } from './adapters/browser'
-import { isRecordingEvent } from './_recording-guard'
-import { shouldIgnoreInputEvent } from './_event-target'
-import { getDefaultIgnoreInputs, handleConflict, optionsEqual } from './_registration'
-import { matchesKeyInput } from './match'
-import { isModifierKey, normalizeRegisterableHotkey, parseRegisterableHotkey } from './parse'
-import { detectPlatform } from './platform'
-import type { BrowserDispatcher } from './adapters/browser-dispatcher'
-import type { FocusNode } from './dispatch/dispatcher'
-import type { KeyInput } from './key-input'
-import type { KeymapEntry } from './dispatch/keymap'
+import { createBrowserDispatcher } from './adapters/browser-dispatcher.js'
+import { keyInputFromKeyboardEvent } from './adapters/browser.js'
+import { isRecordingEvent } from './_recording-guard.js'
+import { shouldIgnoreInputEvent } from './_event-target.js'
+import { getDefaultIgnoreInputs, handleConflict, optionsEqual } from './_registration.js'
+import { matchesKeyInput } from './match.js'
+import { isModifierKey, normalizeRegisterableHotkey, parseRegisterableHotkey } from './parse.js'
+import { detectPlatform } from './platform.js'
+import type { BrowserDispatcher } from './adapters/browser-dispatcher.js'
+import type { FocusNode } from './dispatch/dispatcher.js'
+import type { KeyInput } from './key-input.js'
+import type { KeymapEntry } from './dispatch/keymap.js'
 import type {
   ConflictBehavior,
   Hotkey,
@@ -19,7 +19,7 @@ import type {
   ParsedHotkey,
   RawHotkey,
   RegisterableHotkey,
-} from './hotkey.types'
+} from './hotkey.types.js'
 
 export type { ConflictBehavior }
 export type Target = HTMLElement | Document | Window
@@ -116,6 +116,13 @@ export function createHotkeyRegistry(
     isAvailable: (binding, event) => {
       const entry = binding.command === null ? undefined : entries.get(binding.command)
       return entry !== undefined && accepts(entry, event)
+    },
+  })
+  dispatcher.observeKeys({
+    beforeKey: () => {},
+    reset: () => {
+      // Focus loss can prevent the keyup that normally re-arms requireReset shortcuts.
+      for (const entry of entries.values()) entry.hasFired = false
     },
   })
   const root: FocusNode<KeyboardEvent> = dispatcher.createNode()

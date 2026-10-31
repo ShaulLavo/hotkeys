@@ -1,6 +1,6 @@
-import { createKeyInput } from '../key-input'
-import type { KeyInput } from '../key-input'
-import type { KeyEffects } from '../chords/runtime'
+import { createKeyInput } from '../key-input.js'
+import type { KeyInput } from '../key-input.js'
+import type { KeyEffects } from '../chords/runtime.js'
 
 /**
  * A key parsed from terminal input (legacy escapes or the Kitty protocol), in the shape

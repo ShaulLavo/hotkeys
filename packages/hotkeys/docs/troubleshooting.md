@@ -58,7 +58,7 @@ an unmatched prefix hands its buffered keys to `replay`. in the browser, text fi
 
 ## the same shortcut warns about a conflict
 
-a second registration of the same keys on the same target logs a warning, and both handlers run. set `conflictBehavior` to `'replace'` to swap the old one, `'error'` to throw, or `'allow'` to silence the warning
+a second registration of the same keys on the same target logs a warning and keeps the existing registrations. for `keydown` (the default), the newest eligible handler runs first; returning `false` passes the key to the next handler. set `conflictBehavior` to `'replace'` to swap the old one, `'error'` to throw, or `'allow'` to silence the warning
 
 ## holding a key repeats the callback
 

@@ -1,18 +1,18 @@
-import { createChordRuntime } from '../chords/runtime'
-import { detectPlatform } from '../platform'
-import { createKeyContext, parseKeyContext } from '../context/key-context'
-import { compileKeymap, resolveKeymapNode } from './keymap'
-import type { KeyInput } from '../key-input'
-import type { KeyContext, KeyContextInit } from '../context/key-context'
-import type { KeyEffects } from '../chords/runtime'
+import { createChordRuntime } from '../chords/runtime.js'
+import { detectPlatform } from '../platform.js'
+import { createKeyContext, parseKeyContext } from '../context/key-context.js'
+import { compileKeymap, resolveKeymapNode } from './keymap.js'
+import type { KeyInput } from '../key-input.js'
+import type { KeyContext, KeyContextInit } from '../context/key-context.js'
+import type { KeyEffects } from '../chords/runtime.js'
 import type {
   ChordOutcome,
   KeymapBinding,
   KeymapPlatform,
   KeymapSequenceEvent,
   PendingChordLabel,
-} from '../chords/types'
-import type { CompiledBinding, KeymapEntry } from './keymap'
+} from '../chords/types.js'
+import type { CompiledBinding, KeymapEntry } from './keymap.js'
 
 export type CommandEvent<Source> = {
   readonly command: string
@@ -141,12 +141,12 @@ export function createDispatcher<Source = unknown>(
       ),
     dispatch: (binding, captured, source) => runBinding(binding, captured, source),
     currentFocus,
-    ...(options.replay && { replay: options.replay }),
-    ...(options.acceptsTextInput && { acceptsTextInput: options.acceptsTextInput }),
-    ...(options.timeoutMs !== undefined && { timeoutMs: options.timeoutMs }),
-    ...(options.onPendingChange && { onPendingChange: options.onPendingChange }),
-    ...(options.onSequence && { onSequence: options.onSequence }),
-    ...(options.onCaptureChange && { onCaptureChange: options.onCaptureChange }),
+    replay: options.replay,
+    acceptsTextInput: options.acceptsTextInput,
+    timeoutMs: options.timeoutMs,
+    onPendingChange: options.onPendingChange,
+    onSequence: options.onSequence,
+    onCaptureChange: options.onCaptureChange,
   })
   let currentInput: KeyInput | null = null
   // One object per focus pair, so the runtime compares focus by identity.

@@ -1,4 +1,4 @@
-import type { CanonicalModifier, Key, LogicalKey } from './key.types'
+import type { CanonicalModifier, Key, LogicalKey } from './key.types.js'
 
 // =============================================================================
 // Hotkey Types

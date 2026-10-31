@@ -1,9 +1,9 @@
-import { assertLogicalKey, splitHotkeyParts } from './_keyboard-event'
-import { MODIFIER_ALIASES, MODIFIER_ORDER, normalizeKeyName } from './constants'
-import { detectPlatform, resolveModifier } from './platform'
-import type { CanonicalModifier, Key } from './key.types'
-import type { KeyInput } from './key-input'
-import type { Hotkey, ParsedHotkey, RawHotkey, RegisterableHotkey } from './hotkey.types'
+import { assertLogicalKey, splitHotkeyParts } from './_keyboard-event.js'
+import { MODIFIER_ALIASES, MODIFIER_ORDER, normalizeKeyName } from './constants.js'
+import { detectPlatform, resolveModifier } from './platform.js'
+import type { CanonicalModifier, Key } from './key.types.js'
+import type { KeyInput } from './key-input.js'
+import type { Hotkey, ParsedHotkey, RawHotkey, RegisterableHotkey } from './hotkey.types.js'
 
 /**
  * Parses a hotkey string into its component parts.
@@ -25,34 +25,12 @@ export function parseHotkey(
 ): ParsedHotkey {
   const parts = splitHotkeyParts(hotkey)
   const modifiers: Set<CanonicalModifier> = new Set()
-  let key = ''
+  const key = normalizeKeyName(parts.pop()?.trim() ?? '')
 
-  for (let i = 0; i < parts.length; i++) {
-    const part = parts[i]!.trim()
-
-    if (i === parts.length - 1) {
-      // Last part is always the key
-      key = normalizeKeyName(part)
-    } else {
-      // All other parts are modifiers
-      const alias = MODIFIER_ALIASES[part] ?? MODIFIER_ALIASES[part.toLowerCase()]
-
-      if (alias) {
-        const resolved = resolveModifier(alias, platform)
-        modifiers.add(resolved)
-      } else {
-        // Unknown modifier, treat as part of the key if it's the only part
-        // or ignore if there are more parts
-        if (parts.length === 1) {
-          key = normalizeKeyName(part)
-        }
-      }
-    }
-  }
-
-  // If no key was found (empty string), use the last part as-is
-  if (!key && parts.length > 0) {
-    key = normalizeKeyName(parts[parts.length - 1]!.trim())
+  for (const token of parts) {
+    const part = token.trim()
+    const alias = MODIFIER_ALIASES[part] ?? MODIFIER_ALIASES[part.toLowerCase()]
+    if (alias) modifiers.add(resolveModifier(alias, platform))
   }
 
   const code = /^\[([A-Za-z][A-Za-z0-9]*)\]$/.exec(key)?.[1]

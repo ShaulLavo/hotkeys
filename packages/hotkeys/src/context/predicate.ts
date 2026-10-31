@@ -1,4 +1,4 @@
-import type { KeyContext } from './key-context'
+import type { KeyContext } from './key-context.js'
 
 /** Zed's context predicate language, parsed. */
 export type ContextPredicate =

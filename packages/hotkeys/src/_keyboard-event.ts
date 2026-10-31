@@ -1,4 +1,4 @@
-import { PUNCTUATION_CODE_MAP } from './constants'
+import { PUNCTUATION_CODE_MAP } from './constants.js'
 
 /**
  * Maps familiar positions to compatibility fallback keys for the logical matcher.

@@ -1,7 +1,7 @@
-import { LETTER_KEYS, NUMBER_KEYS, PUNCTUATION_CODE_MAP } from '../constants'
-import { normalizeRegisterableHotkey, parseHotkey, rawHotkeyToParsedHotkey } from '../parse'
-import type { KeyInput } from '../key-input'
-import type { KeymapBinding, KeymapPlatform } from './types'
+import { LETTER_KEYS, NUMBER_KEYS, PUNCTUATION_CODE_MAP } from '../constants.js'
+import { normalizeRegisterableHotkey, parseHotkey, rawHotkeyToParsedHotkey } from '../parse.js'
+import type { KeyInput } from '../key-input.js'
+import type { KeymapBinding, KeymapPlatform } from './types.js'
 
 const LATIN_LETTER_PATTERN = /^[a-z]$/i
 

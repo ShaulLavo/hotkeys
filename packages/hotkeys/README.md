@@ -11,8 +11,13 @@ Install a commit-pinned tarball from [hotkeys releases](https://github.com/Shaul
 ```ts
 import { getHotkeyRegistry } from '@fregat/hotkeys'
 
-const save = getHotkeyRegistry().register('Mod+S', () => console.log('Save requested'))
-save.unregister()
+function mountShortcuts(onSave: () => void): () => void {
+  const save = getHotkeyRegistry().register('Mod+S', onSave)
+  return () => save.unregister()
+}
+
+const cleanup = mountShortcuts(() => console.log('Save requested'))
+// Call cleanup() when the view unmounts.
 ```
 
 `Mod` is Command on macOS and Control elsewhere.

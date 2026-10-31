@@ -1,8 +1,8 @@
-import { keyInputFromKeyboardEvent } from './browser'
-import { hasEditContext, isInputElement } from '../_event-target'
-import type { KeyInput } from '../key-input'
-import type { ChordOutcome, KeymapPlatform } from '../chords/types'
-import type { KeyEffects } from '../chords/runtime'
+import { keyInputFromKeyboardEvent } from './browser.js'
+import { hasEditContext, isInputElement } from '../_event-target.js'
+import type { KeyInput } from '../key-input.js'
+import type { ChordOutcome, KeymapPlatform } from '../chords/types.js'
+import type { KeyEffects } from '../chords/runtime.js'
 
 /** What the listeners drive: a chord runtime, or a dispatcher wrapping one. */
 export type KeyListenerTarget = {

@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import { detectPlatform, getHotkeyRegistry, normalizeRegisterableHotkey } from '@fregat/hotkeys'
-import { useDefaultHotkeysOptions } from './HotkeysProvider'
-import { isRef } from './utils'
-import type { UseHotkeyOptions } from './useHotkey'
+import { useDefaultHotkeysOptions } from './HotkeysProvider.js'
+import { isRef } from './utils.js'
+import type { UseHotkeyOptions } from './useHotkey.js'
 import type {
   Hotkey,
   HotkeyCallback,
@@ -86,7 +86,9 @@ export function useHotkeys(
   const defaultOptionsRef = useRef(defaultOptions)
   const managerRef = useRef(manager)
 
-  const hotkeyStrings = hotkeys.map((def) => normalizeRegisterableHotkey(def.hotkey, platform))
+  const hotkeyStrings = hotkeys.map((def) =>
+    normalizeRegisterableHotkey(def.hotkey, def.options?.platform ?? platform),
+  )
 
   // Refs are written after commit; the effects below read them.
   useLayoutEffect(() => {

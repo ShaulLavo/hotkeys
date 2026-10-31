@@ -1,4 +1,4 @@
-import { LOGICAL_ONLY_NAMED_KEYS, SHARED_NAMED_KEYS } from './_named-keys'
+import { LOGICAL_ONLY_NAMED_KEYS, SHARED_NAMED_KEYS } from './_named-keys.js'
 import type {
   CanonicalModifier,
   EditingKey,
@@ -8,7 +8,7 @@ import type {
   NavigationKey,
   NumberKey,
   PunctuationKey,
-} from './key.types'
+} from './key.types.js'
 
 /**
  * Canonical order for modifiers in normalized hotkey strings.

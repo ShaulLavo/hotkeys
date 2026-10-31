@@ -1,9 +1,9 @@
-import { createDispatcher } from '../dispatch/dispatcher'
-import { detectPlatform } from '../platform'
-import { isInputElement } from '../_event-target'
-import { attachKeyListeners, browserKeyEffects, replayTextInput } from './browser-listeners'
-import type { Dispatcher, DispatcherOptions, FocusNode } from '../dispatch/dispatcher'
-import type { KeyResetReason } from './browser-listeners'
+import { createDispatcher } from '../dispatch/dispatcher.js'
+import { detectPlatform } from '../platform.js'
+import { isInputElement } from '../_event-target.js'
+import { attachKeyListeners, browserKeyEffects, replayTextInput } from './browser-listeners.js'
+import type { Dispatcher, DispatcherOptions, FocusNode } from '../dispatch/dispatcher.js'
+import type { KeyResetReason } from './browser-listeners.js'
 
 export type BrowserDispatcherOptions = Omit<DispatcherOptions<KeyboardEvent>, 'effects'> & {
   /** Where idle keys are heard; defaults to the global document. */
