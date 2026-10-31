@@ -66,10 +66,11 @@ editor.handle('editor.indent', () => {
 
 ## chords
 
-strokes separated by spaces form a chord. the prefix never reaches the page
+strokes separated by spaces form a chord. when an eligible longer chord keeps the input pending, the dispatcher holds its prefix from the page. if no exact binding or eligible continuation matches, the key keeps its default input handling
 
-- a prefix that is itself bound waits `timeoutMs` (one second by default) for its continuation, then runs its own binding
-- an unbound prefix waits for the next key
+- a pending prefix that is itself bound waits `timeoutMs` (one second by default) for its continuation, then tries its exact bindings. a bound prefix with no eligible continuation runs immediately; ordering can exclude a continuation, as described below
+- an unbound prefix normally waits for the next key. it also times out when `acceptsTextInput(source)` is true and the buffered stroke is printable or `Space`, without Control or Meta
+- once a timeout starts, it restarts as the chord advances, including through unbound prefixes
 - a key that does not continue the chord ends it: the longest bound buffered prefix runs, the other buffered keys go to your `replay` hook, and the new key is matched from scratch
 - a pending chord belongs to the focus it started under. it ends on focus change, blur, a hidden tab or pointer down
 
@@ -83,6 +84,30 @@ const hotkeys = createBrowserDispatcher({
   onSequence: (event) => log('chord', event.outcome, event.elapsedMs),
 })
 ```
+
+### prefix ordering
+
+first, the exact bindings for the buffered keys are filtered by context and availability, ranked by context depth, source, then later table position, and processed for removals. the first remaining exact binding sets a cutoff: only longer chords listed **after that binding** can keep the prefix pending. longer chords listed before it are shadowed for this lookup
+
+with both bindings eligible, these tables behave differently on `Control+K`:
+
+```ts
+// waits for Control+C; on timeout, tries search.open
+const waitsForContinuation = [
+  { keys: 'Control+K', command: 'search.open' },
+  { keys: 'Control+K Control+C', command: 'comment.add' },
+]
+
+// tries search.open immediately; the earlier chord cannot keep the prefix pending
+const runsSearchImmediately = [
+  { keys: 'Control+K Control+C', command: 'comment.add' },
+  { keys: 'Control+K', command: 'search.open' },
+]
+```
+
+context depth and source choose the exact binding that sets the cutoff. an earlier exact binding can therefore set it ahead of a later, lower-ranked exact binding. the continuation is not compared against that winner's depth or source again: its table position decides whether it passes the cutoff
+
+the continuation must still match the current context and pass the dispatcher's `isAvailable` check, when supplied. an inactive continuation does not make a bound prefix wait. if the exact binding is inactive, another exact binding may set the cutoff; if none survives, there is no exact-binding cutoff. shadowing therefore depends on the current context and availability, not just the table in isolation
 
 ## terminals
 

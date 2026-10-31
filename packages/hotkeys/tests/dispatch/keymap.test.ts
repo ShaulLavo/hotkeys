@@ -2,7 +2,14 @@
 // Zed's NoAction is `command: null`, Unbind is `unbind`, and its meta indexes map to sources:
 // USER → 'user', VIM → 'pack', BASE → 'base', DEFAULT → 'default'.
 import { describe, expect, it } from 'vitest'
-import { bindingsForInput, compileKeymap, createKeyInput, parseKeyContext } from '../../src'
+import {
+  bindingsForInput,
+  compileKeymap,
+  createKeyInput,
+  parseKeyContext,
+  resolveKeymapNode,
+  trieStep,
+} from '../../src'
 import type { KeymapEntry } from '../../src'
 
 function stroke(spec: string) {
@@ -293,5 +300,124 @@ describe('Zed keymap resolution', () => {
       { keys: 'Control+P', command: 'default', source: 'default' },
     ]
     expect(lookup(entries, 'ctrl-p', ['Workspace']).commands).toEqual(['mine', 'default'])
+  })
+})
+
+describe('chord prefix ordering', () => {
+  const exact: KeymapEntry = { keys: 'Control+K', command: 'search.open' }
+  const continuation: KeymapEntry = { keys: 'Control+K Control+C', command: 'comment.add' }
+  const orders = [
+    { order: 'exact before continuation', entries: [exact, continuation], pending: true },
+    { order: 'exact after continuation', entries: [continuation, exact], pending: false },
+  ]
+
+  it.each(orders)(
+    '$order selects the same exact binding with pending=$pending',
+    ({ entries, pending }) => {
+      expect(lookup(entries, 'ctrl-k', [])).toEqual({ commands: ['search.open'], pending })
+    },
+  )
+
+  it.each([
+    {
+      ranking: 'source rank',
+      preferred: { keys: 'Control+K', command: 'preferred', context: 'Editor', source: 'user' },
+      fallback: { keys: 'Control+K', command: 'fallback', context: 'Editor', source: 'default' },
+    },
+    {
+      ranking: 'context depth before source rank',
+      preferred: { keys: 'Control+K', command: 'preferred', context: 'Editor', source: 'default' },
+      fallback: { keys: 'Control+K', command: 'fallback', context: 'Workspace', source: 'user' },
+    },
+  ] as const)(
+    '$ranking chooses the exact binding that sets the cutoff',
+    ({ preferred, fallback }) => {
+      const longer: KeymapEntry = {
+        keys: 'Control+K Control+C',
+        command: 'comment.add',
+        context: 'Workspace',
+        source: 'default',
+      }
+      const stack = ['Workspace', 'Editor']
+      expect(lookup([preferred, longer, fallback], 'ctrl-k', stack)).toEqual({
+        commands: ['preferred', 'fallback'],
+        pending: true,
+      })
+      expect(lookup([fallback, longer, preferred], 'ctrl-k', stack)).toEqual({
+        commands: ['preferred', 'fallback'],
+        pending: false,
+      })
+    },
+  )
+
+  it('a continuation with deeper context and stronger source still has to pass the cutoff', () => {
+    const shorter: KeymapEntry = {
+      keys: 'Control+K',
+      command: 'search.open',
+      context: 'Workspace',
+      source: 'default',
+    }
+    const longer: KeymapEntry = {
+      keys: 'Control+K Control+C',
+      command: 'comment.add',
+      context: 'Editor',
+      source: 'user',
+    }
+    const stack = ['Workspace', 'Editor']
+    expect(lookup([longer, shorter], 'ctrl-k', stack)).toEqual({
+      commands: ['search.open'],
+      pending: false,
+    })
+    expect(lookup([shorter, longer], 'ctrl-k', stack)).toEqual({
+      commands: ['search.open'],
+      pending: true,
+    })
+  })
+
+  it('an exact binding outside the current context does not shadow an earlier continuation', () => {
+    const entries: KeymapEntry[] = [
+      { keys: 'Control+K Control+C', command: 'comment.add', context: 'Workspace' },
+      { keys: 'Control+K', command: 'search.open', context: 'Editor' },
+    ]
+    expect(lookup(entries, 'ctrl-k', ['Workspace', 'Editor'])).toEqual({
+      commands: ['search.open'],
+      pending: false,
+    })
+    expect(lookup(entries, 'ctrl-k', ['Workspace'])).toEqual({ commands: [], pending: true })
+  })
+
+  it('a later continuation outside the current context does not keep an exact binding pending', () => {
+    const entries: KeymapEntry[] = [
+      { keys: 'Control+K', command: 'search.open', context: 'Workspace' },
+      { keys: 'Control+K Control+C', command: 'comment.add', context: 'Editor' },
+    ]
+    expect(lookup(entries, 'ctrl-k', ['Workspace', 'Editor'])).toEqual({
+      commands: ['search.open'],
+      pending: true,
+    })
+    expect(lookup(entries, 'ctrl-k', ['Workspace'])).toEqual({
+      commands: ['search.open'],
+      pending: false,
+    })
+  })
+
+  it.each(orders)('$order applies availability before deciding whether to wait', ({ entries }) => {
+    const keymap = compileKeymap(entries, 'linux')
+    const prefix = trieStep(keymap.root, stroke('ctrl-k'))!.node
+    function selectAvailable(commands: readonly string[]) {
+      const result = resolveKeymapNode(
+        prefix,
+        [],
+        (binding) => binding.command !== null && commands.includes(binding.command),
+      )
+      return {
+        commands: result.bindings.map((binding) => binding.payload.command),
+        pending: result.pending > 0,
+      }
+    }
+
+    expect(selectAvailable(['search.open'])).toEqual({ commands: ['search.open'], pending: false })
+    expect(selectAvailable(['comment.add'])).toEqual({ commands: [], pending: true })
+    expect(selectAvailable([])).toEqual({ commands: [], pending: false })
   })
 })

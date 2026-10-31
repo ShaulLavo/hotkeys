@@ -46,7 +46,7 @@ createBrowserDispatcher({
 ```
 
 - `completed`: a bound chord ran
-- `timeout`: a bound prefix waited `timeoutMs` (1 second by default) and ran its own binding
+- `timeout`: a pending prefix reached `timeoutMs` (1 second by default). the runtime tries bound prefixes and replays unbound input. printable prefixes in text input can also time out without an exact binding; see [chords](keymaps.md#chords)
 - `unmatched`: the next key did not continue the chord
 - `unavailable`: `isAvailable` filtered the bindings out
 - `blur`, `hidden`, `pointer`, `superseded`: the window lost focus, the tab hid, a pointer pressed, or focus moved
