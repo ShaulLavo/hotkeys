@@ -116,16 +116,31 @@ export function resolveKeymapNode(
   stack: readonly KeyContext[],
   isAvailable: (binding: CompiledBinding) => boolean = always,
 ): KeymapSelection<CompiledBinding> {
+  const bindings = effectiveBindings(node.candidates, stack, isAvailable)
+  const first = bindings[0]?.payload.index ?? -1
+  return { bindings, pending: pendingChords(node, stack, first, isAvailable) }
+}
+
+function effectiveBindings(
+  candidates: readonly KeymapBinding<CompiledBinding>[],
+  stack: readonly KeyContext[],
+  isAvailable: (binding: CompiledBinding) => boolean,
+): KeymapBinding<CompiledBinding>[] {
   const ranked: Ranked[] = []
-  for (const binding of node.candidates) {
-    if (!isAvailable(binding.payload)) continue
-    const depth = predicateDepth(binding.payload.predicate, stack)
+  for (const binding of candidates) {
+    const depth = bindingDepth(binding.payload, stack, isAvailable)
     if (depth !== null) ranked.push({ depth, binding })
   }
   ranked.sort(compareRanked)
-  const bindings = actionable(ranked)
-  const first = bindings[0]?.payload.index ?? -1
-  return { bindings, pending: pendingChords(node.descendants, stack, first, isAvailable) }
+  return actionable(ranked)
+}
+
+function bindingDepth(
+  binding: CompiledBinding,
+  stack: readonly KeyContext[],
+  isAvailable: (binding: CompiledBinding) => boolean,
+): number | null {
+  return isAvailable(binding) ? predicateDepth(binding.predicate, stack) : null
 }
 
 function always(): boolean {
@@ -165,22 +180,46 @@ function removes(removal: CompiledBinding, binding: CompiledBinding): boolean {
   return removal.chord === binding.chord && removal.unbind === binding.command
 }
 
-// A longer chord defined before the winning exact binding is shadowed by it; removals cancel chords.
-// Descendants are already in table order: the trie inserts bindings in order.
+// Resolve each descendant's complete candidate set before applying the exact-prefix cutoff.
+// An earlier removal can still suppress a later continuation; each surviving path counts once.
 function pendingChords(
-  descendants: readonly KeymapBinding<CompiledBinding>[],
+  node: KeymapNode<CompiledBinding>,
   stack: readonly KeyContext[],
   firstIndex: number,
   isAvailable: (binding: CompiledBinding) => boolean,
 ): number {
-  const chords = new Set<string>()
-  for (const { payload } of descendants) {
-    if (payload.index < firstIndex || !isAvailable(payload)) continue
-    if (predicateDepth(payload.predicate, stack) === null) continue
-    if (payload.command === null) chords.delete(payload.chord)
-    else chords.add(payload.chord)
+  if (node.next.size === 0) return 0
+  let count = 0
+  const remaining = [node]
+  while (remaining.length) {
+    const current = remaining.pop()!
+    for (const edges of current.next.values()) {
+      for (const edge of edges) {
+        if (edge) remaining.push(edge.node)
+      }
+    }
+    if (current === node || current.candidates.length === 0) continue
+    if (hasPendingBinding(current.candidates, stack, firstIndex, isAvailable)) count += 1
   }
-  return chords.size
+  return count
+}
+
+function hasPendingBinding(
+  candidates: readonly KeymapBinding<CompiledBinding>[],
+  stack: readonly KeyContext[],
+  firstIndex: number,
+  isAvailable: (binding: CompiledBinding) => boolean,
+): boolean {
+  // Without removals, ranking cannot change reachability; avoid sorting the whole candidate set.
+  if (!candidates.some((binding) => binding.payload.command === null)) {
+    return candidates.some(
+      ({ payload }) =>
+        payload.index >= firstIndex && bindingDepth(payload, stack, isAvailable) !== null,
+    )
+  }
+  return effectiveBindings(candidates, stack, isAvailable).some(
+    (binding) => binding.payload.index >= firstIndex,
+  )
 }
 
 /** What a sequence of keys resolves to under a context stack, for settings and tests. */

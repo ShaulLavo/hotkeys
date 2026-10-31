@@ -54,8 +54,9 @@ export type ChordRuntimeOptions<Payload, Context, Source> = {
   /** Called whenever {@link ChordRuntime.wantsCapture} may have changed. */
   readonly onCaptureChange?: () => void
   /**
-   * Receives a buffered key that no binding took when a chord mismatches or times out, so the
-   * host can give it to default input handling (a terminal re-encodes it for the shell).
+   * Receives each unclaimed buffered key in order when a chord mismatches, times out, or its
+   * completion declines. The current unclaimed event passes through normally; only previously
+   * buffered keys need replay (a terminal re-encodes them for the shell).
    */
   readonly replay?: (input: KeyInput, source: Source) => void
   /**
@@ -243,7 +244,8 @@ export function createChordRuntime<Payload, Context, Source>(
   }
   /**
    * Zed's `replay_prefix`: runs the longest buffered prefix that has an available binding, or
-   * hands the first key to the host's `replay`. Returns the keys after it.
+   * hands the first key to the host's `replay`. If the bound prefix declines, replays that whole
+   * prefix once without retrying shorter bindings inside it. Returns the keys after it.
    */
   function replayPrefix(buffer: readonly Buffered<Source>[]): Replayed<Payload, Source> {
     const first = buffer[0]!
@@ -256,9 +258,12 @@ export function createChordRuntime<Payload, Context, Source>(
     const last = buffer[end.index]!
     const result = execute(end.bindings, context, last.source, last.input)
     if (result.kind === 'declined' || result.kind === 'unavailable')
-      options.replay?.(last.input, last.source)
+      replayKeys(buffer.slice(0, end.index + 1))
     const claimed = result.kind === 'claimed' ? result.binding : null
     return { claimed, rest: buffer.slice(end.index + 1) }
+  }
+  function replayKeys(buffer: readonly Buffered<Source>[]) {
+    for (const { input, source } of buffer) options.replay?.(input, source)
   }
   function longestBoundPrefix(
     buffer: readonly Buffered<Source>[],
@@ -395,7 +400,7 @@ export function createChordRuntime<Payload, Context, Source>(
       return 'chord'
     }
     // Nothing took the new chord: its earlier keys go back to the host, the new key passes on.
-    for (const earlier of buffer.slice(0, -1)) options.replay?.(earlier.input, earlier.source)
+    replayKeys(buffer.slice(0, -1))
     return null
   }
   function resolve(
@@ -418,7 +423,13 @@ export function createChordRuntime<Payload, Context, Source>(
     if (fromChord && owned) effects.swallow(source)
     if (fromChord) {
       if (result.kind === 'claimed') cancel('completed', result.binding)
-      else cancel(result.kind === 'cancelled' ? result.outcome : 'unavailable')
+      else if (result.kind === 'cancelled') cancel(result.outcome)
+      else if (pending && focusMoved()) cancel('superseded')
+      else if (!owned && pending) {
+        const ended = endPending()
+        replayKeys(ended.buffer)
+        report(ended, 'unavailable', null)
+      } else cancel('unavailable')
     }
     if (!owned) return null
     return fromChord ? 'chord' : 'binding'
