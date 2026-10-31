@@ -72,7 +72,7 @@ export function trieStep<Payload>(
   if (edge) return edge
   const implicit = shift ? printed?.[modifiers & ~8] : undefined
   if (implicit && allowsImplicitShift(input.key)) return implicit
-  if (!allowsCodeFallback(input.key, input.code, alt)) return null
+  if (!allowsCodeFallback(input)) return null
   const physical = PHYSICAL_KEY_NAMES.get(input.code)
   if (!physical) return null
   return node.next.get(physical)?.[modifiers] ?? null

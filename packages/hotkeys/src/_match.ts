@@ -35,7 +35,7 @@ export function matchKeyInput(
     return matched('key', implicitShift ? 2 : 3)
   }
 
-  if (!allowsCodeFallback(input.key, input.code, input.modifiers.alt)) return noMatch
+  if (!allowsCodeFallback(input)) return noMatch
 
   if (!modifiersMatch(input.modifiers, parsed, false)) return noMatch
   const fallbackKey = codeToLogicalKey(input.code)

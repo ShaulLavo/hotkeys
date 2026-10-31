@@ -50,7 +50,7 @@ physical bindings use bracketed codes such as `[Slash]` and `Control+[KeyE]`. th
 
 the dispatcher tries an exact printed-key match, then an exact physical-code match, then a printed-glyph match allowing implicit Shift, and finally a compatible positional fallback with the original modifiers. exact `Shift+?` and `Shift+[Slash]` therefore take priority over a permissive `?` binding
 
-layout-produced Latin letters keep their printed meaning on letter-key positions, including accents: Control with `é` on `KeyE` does not activate logical `Control+E`. use `Control+[KeyE]` for that position. the existing Alt compatibility fallback for transformed glyphs remains available; non-Latin layouts and dead keys can also use positional fallback
+layout-produced Latin letters keep their printed meaning on letter-key positions, including accents: Control with `é` on `KeyE` does not activate logical `Control+E`. use `Control+[KeyE]` for that position. the existing Alt compatibility fallback for transformed glyphs remains available, but AltGraph's synthetic Alt does not qualify: typing `é` with AltGr does not activate logical `E`. non-Latin layouts and dead keys can also use positional fallback
 
 ## chords
 

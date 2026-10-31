@@ -1,4 +1,5 @@
 import { PUNCTUATION_CODE_MAP } from './constants.js'
+import type { KeyInput } from './key-input.js'
 
 /**
  * Maps familiar positions to compatibility fallback keys for the logical matcher.
@@ -55,10 +56,14 @@ export function isLatinLetter(key: string): boolean {
 }
 
 /**
- * Layout-produced Latin letters own their Key* positions. Alt retains the compatibility fallback
- * for glyphs transformed by Option; ASCII letters always keep their printed meaning.
+ * Layout-produced Latin letters own their Key* positions. Real Alt retains the compatibility
+ * fallback for Option-transformed glyphs; AltGraph's synthetic Alt does not qualify.
  */
-export function allowsCodeFallback(key: string, code: string, alt: boolean): boolean {
+export function allowsCodeFallback(
+  input: Readonly<Pick<KeyInput, 'key' | 'code' | 'modifiers'>>,
+): boolean {
+  const { key, code, modifiers } = input
+  const alt = modifiers.alt && !modifiers.altGraph
   return !isAsciiLetter(key) && (!isLatinLetter(key) || !code.startsWith('Key') || alt)
 }
 

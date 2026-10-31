@@ -215,6 +215,37 @@ test('AltGraph Shift produces the printed glyph without triggering Control+Alt',
   expect(calls).toEqual(['glyph'])
 })
 
+const altGraphLatinCases = (
+  [
+    { glyph: 'é', code: 'KeyE', fallback: 'E' },
+    { glyph: 'ø', code: 'KeyO', fallback: 'O' },
+    { glyph: 'ß', code: 'KeyS', fallback: 'S' },
+  ] as const
+).flatMap((input) =>
+  (['keydown', 'keyup'] as const).map((eventType) => Object.assign({ eventType }, input)),
+)
+
+test.each(altGraphLatinCases)(
+  'AltGraph typing $glyph does not fire $fallback on $eventType',
+  ({ glyph, code, fallback, eventType }) => {
+    registry = createHotkeyRegistry()
+    const shortcut = vi.fn()
+    const printed = vi.fn()
+    const handle = registry.register(fallback, shortcut, { platform: 'windows', eventType })
+    const input = { key: glyph, code, ctrlKey: true, altKey: true }
+
+    const source = key(input, eventType, true)
+
+    expect(matchesKeyboardEvent(source, fallback, 'windows')).toBe(false)
+    expect(shortcut).not.toHaveBeenCalled()
+    expect(source.defaultPrevented).toBe(false)
+    handle.unregister()
+    registry.register({ key: glyph }, printed, { platform: 'windows', eventType })
+    expect(key(input, eventType, true).defaultPrevented).toBe(true)
+    expect(printed).toHaveBeenCalledOnce()
+  },
+)
+
 test.each([
   {
     name: 'native accented Latin',

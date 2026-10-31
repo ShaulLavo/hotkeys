@@ -174,6 +174,25 @@ test.each([
   }
 })
 
+test.each([
+  ['é', 'KeyE', 'E'],
+  ['ø', 'KeyO', 'O'],
+  ['ß', 'KeyS', 'S'],
+])('AltGraph typing %s does not use the real-Alt fallback from %s', (key, code, fallback) => {
+  for (const shift of [false, true]) {
+    for (const meta of [false, true]) {
+      const input = createKeyInput({
+        key,
+        code,
+        modifiers: { ctrl: true, alt: true, altGraph: true, shift, meta },
+      })
+      expectMatch(input, { key, shift, meta }, true)
+      expectMatch(input, { key: fallback, shift, meta }, false)
+      expectMatch(input, { code, shift, meta }, true)
+    }
+  }
+})
+
 test('a native Latin letter on a punctuation position retains positional fallback', () => {
   const input = createKeyInput({ key: 'ø', code: 'Semicolon', modifiers: { ctrl: true } })
   expectMatch(input, { key: 'ø', ctrl: true }, true)
