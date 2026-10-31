@@ -10,6 +10,10 @@ a shortcut that does not fire usually fails in one of a few places. start at the
 4. **the handler declined.** a handler that returns `false` passes the key on. check for a stray `return false`
 5. **it runs on a different platform.** `Mod` is Command on macOS and Control elsewhere. without `navigator` (SSR, tests) the platform is `linux`. pass `platform: 'mac'` to override it
 
+## punctuation or another keyboard layout behaves differently
+
+bind the printed symbol when that is what the shortcut means: `?` or `Control++` accepts Shift used to produce the glyph. bind `Shift+[Slash]` when the physical position and modifier are intentional. letters keep exact Shift matching, and accented Latin output does not silently become an unaccented letter shortcut. see [printed keys and physical keys](concepts.md#printed-keys-and-physical-keys) for precedence and fallback rules
+
 ## it works outside inputs but not inside
 
 `getHotkeyRegistry().register` skips a shortcut while a text field has focus unless you set `ignoreInputs: false`. the default is `true` for bare keys and for Shift and Alt combinations. Control and Meta combinations, and Escape, still fire inside inputs

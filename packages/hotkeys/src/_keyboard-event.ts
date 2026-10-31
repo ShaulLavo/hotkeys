@@ -1,4 +1,5 @@
 import { PUNCTUATION_CODE_MAP } from './constants.js'
+import type { KeyInput } from './key-input.js'
 
 /**
  * Maps familiar positions to compatibility fallback keys for the logical matcher.
@@ -30,6 +31,11 @@ export function isPrintableKey(key: string): boolean {
   return key !== '' && Array.from(key).length === 1
 }
 
+/** Shift may produce a printed glyph without being part of its logical shortcut. Letters stay exact. */
+export function allowsImplicitShift(key: string): boolean {
+  return isPrintableKey(key) && !/^\p{Letter}$/u.test(key)
+}
+
 /** Splits modifier tokens while retaining a trailing literal plus: `Control++` → `['Control', '+']`. */
 export function splitHotkeyParts(hotkey: string): Array<string> {
   if (!hotkey.endsWith('+')) return hotkey.split('+')
@@ -47,6 +53,18 @@ export function isAsciiLetter(key: string): boolean {
 /** Identifies a single Latin-script character, including accented letters. */
 export function isLatinLetter(key: string): boolean {
   return /^\p{Script_Extensions=Latin}$/u.test(key)
+}
+
+/**
+ * Layout-produced Latin letters own their Key* positions. Real Alt retains the compatibility
+ * fallback for Option-transformed glyphs; AltGraph's synthetic Alt does not qualify.
+ */
+export function allowsCodeFallback(
+  input: Readonly<Pick<KeyInput, 'key' | 'code' | 'modifiers'>>,
+): boolean {
+  const { key, code, modifiers } = input
+  const alt = modifiers.alt && !modifiers.altGraph
+  return !isAsciiLetter(key) && (!isLatinLetter(key) || !code.startsWith('Key') || alt)
 }
 
 /** Compares letters without case, preserving accents and avoiding expansions such as ß → SS. */
