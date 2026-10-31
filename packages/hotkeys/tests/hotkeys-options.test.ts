@@ -41,6 +41,44 @@ function panels() {
   return { first, second }
 }
 
+const reentrantBindings = (['Mod+S', 'Control+S'] as const).flatMap((keys) =>
+  (['setOptions', 'replaceOptions'] as const).map((method) => ({ keys, method })),
+)
+
+test.each(reentrantBindings)(
+  '$method from a trigger subscriber preserves the triggering $keys callback metadata',
+  ({ keys, method }) => {
+    const hotkeys = setup()
+    const callback = vi.fn()
+    const handle = hotkeys.register(keys, callback, { platform: 'linux' })
+    const before = hotkeys.registrations.state.get(handle.id)!
+    let updated = false
+    const subscription = hotkeys.registrations.subscribe(() => {
+      if (updated || hotkeys.registrations.state.get(handle.id)?.triggerCount !== 1) return
+      updated = true
+      handle[method]({ platform: 'mac' })
+    })
+    try {
+      press(document, 's', { ctrlKey: true })
+      expect(callback.mock.lastCall?.[1]).toEqual({
+        hotkey: before.hotkey,
+        parsedHotkey: before.strokes[0],
+      })
+      const after = hotkeys.registrations.state.get(handle.id)!
+      expect(after.options.platform).toBe('mac')
+      const adaptive = keys === 'Mod+S'
+      press(document, 's', { ctrlKey: !adaptive, metaKey: adaptive })
+      expect(callback).toHaveBeenCalledTimes(2)
+      expect(callback.mock.lastCall?.[1]).toEqual({
+        hotkey: after.hotkey,
+        parsedHotkey: after.strokes[0],
+      })
+    } finally {
+      subscription.unsubscribe()
+    }
+  },
+)
+
 test('setOptions remains a patch while replaceOptions restores omitted behavior and metadata', () => {
   const callback = vi.fn()
   const hotkeys = setup()

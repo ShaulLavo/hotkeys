@@ -24,6 +24,8 @@ both setters keep the handle, registration order, callback, and trigger count. c
 
 changes to matching or event behavior cancel a pending chord. target, platform, and event-type changes also re-arm `requireReset`. metadata-only changes, callback updates, and unchanged effective options preserve pending input. changing a registration's target, event type, or resolved keys checks the resulting conflict using its current `conflictBehavior`; a rejected update leaves the old registration active. option updates to an unregistered handle do nothing
 
+callback binding metadata is captured before publishing the trigger count. if a store subscriber changes the registration during that publication, the callback still describes the binding that matched the event; later events use the updated binding
+
 ## route keys by focus
 
 | export                                           | does                                                    |
@@ -98,6 +100,8 @@ useHotkey('Mod+S', save, { target: editorRef })
 registration and recorder hooks replace their option configuration after each committed render. current provider defaults are applied first, then hook/common options, then per-definition options for batches. removing a prop reveals the current lower-level default; removing that default too restores the core behavior. for example, switching from `{ enabled: false }` to `{}` enables a shortcut unless a current provider/common default still disables it. removed recorder callbacks no longer run
 
 target and platform updates preserve an existing registration's handle and trigger count. a ref with no attached element removes the registration until a later committed render supplies a target; an omitted or `null` target uses the document. changing the shortcut or sequence itself creates a new registration. batch rows still use their list position and shortcut as identity, so insertion/reordering can replace handles
+
+equivalent string and raw bindings, key aliases, and letter case preserve registration identity and priority. symbolic `Mod` remains distinct from literal Control or Meta because it resolves differently across platforms
 
 ### server rendering
 

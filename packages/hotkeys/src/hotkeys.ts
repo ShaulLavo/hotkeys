@@ -165,11 +165,12 @@ export function createHotkeyRegistry(
     registrations.setState(() => views)
   }
   function fire(entry: Registration, event: KeyboardEvent) {
+    const hotkey = entry.hotkey as Hotkey
+    const [first] = entry.parsed
     entry.hasFired = true
     entry.triggerCount += 1
     registrations.setState((previous) => new Map(previous).set(entry.id, view(entry)))
-    const [first] = entry.parsed
-    return entry.callback(event, { hotkey: entry.hotkey as Hotkey, parsedHotkey: first! })
+    return entry.callback(event, { hotkey, parsedHotkey: first! })
   }
   function accepts(entry: Registration, event: KeyboardEvent): boolean {
     if (isRecordingEvent(event)) return false

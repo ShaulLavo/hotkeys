@@ -44,6 +44,77 @@ afterEach(() => {
   document.body.replaceChildren()
 })
 
+const equivalentInputs: ReadonlyArray<{
+  name: string
+  initial: RegisterableHotkey
+  next: RegisterableHotkey
+  key: Hotkey
+  event: KeyboardEventInit
+}> = [
+  { name: 'raw letter case', initial: { key: 'g' }, next: { key: 'G' }, key: 'G', event: {} },
+  {
+    name: 'raw key alias',
+    initial: { key: 'Esc' },
+    next: { key: 'Escape' },
+    key: 'Escape',
+    event: {},
+  },
+  { name: 'raw to string', initial: { key: 'G' }, next: 'G', key: 'G', event: {} },
+  {
+    name: 'literal modifiers',
+    initial: { key: 'g', ctrl: true },
+    next: 'Control+G',
+    key: 'G',
+    event: { ctrlKey: true },
+  },
+]
+const identityCases = equivalentInputs.flatMap((input) =>
+  (['single', 'batch'] as const).map((kind) => Object.assign({ kind }, input)),
+)
+
+test.each(identityCases)(
+  '$kind preserves its handle, counter and priority for equivalent $name',
+  ({ kind, initial, next, key, event }) => {
+    const callback = vi.fn()
+    const { rerender } = renderHook(
+      ({ binding }: { binding: RegisterableHotkey }) => {
+        useHotkey(kind === 'single' ? binding : 'F12', callback, {
+          platform: 'linux',
+          enabled: kind === 'single',
+          conflictBehavior: 'allow',
+        })
+        useHotkeys(kind === 'batch' ? [{ hotkey: binding, callback }] : [], {
+          platform: 'linux',
+          conflictBehavior: 'allow',
+        })
+      },
+      { initialProps: { binding: initial } },
+    )
+    const registry = getHotkeyRegistry()
+    const original = Array.from(registry.registrations.state.values()).find(
+      (entry) => entry.options.enabled !== false,
+    )!
+    dispatch(document, key, event)
+    expect(callback).toHaveBeenCalledOnce()
+    const later = vi.fn()
+    const blocker = registry.register(key === 'G' && event.ctrlKey ? 'Control+G' : key, later, {
+      platform: 'linux',
+      conflictBehavior: 'allow',
+    })
+    dispatch(document, key, event)
+    expect(later).toHaveBeenCalledOnce()
+
+    rerender({ binding: next })
+
+    expect(registry.registrations.state.has(original.id)).toBe(true)
+    expect(registry.registrations.state.get(original.id)?.triggerCount).toBe(1)
+    dispatch(document, key, event)
+    expect(later).toHaveBeenCalledTimes(2)
+    expect(callback).toHaveBeenCalledOnce()
+    blocker.unregister()
+  },
+)
+
 function view() {
   const entries = Array.from(getHotkeyRegistry().registrations.state.values())
   expect(entries).toHaveLength(1)
