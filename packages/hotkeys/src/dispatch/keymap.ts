@@ -7,7 +7,7 @@ import type { KeyContext } from '../context/key-context.js'
 import type { ContextPredicate } from '../context/predicate.js'
 import type { KeyChord, KeymapBinding, KeymapPlatform } from '../chords/types.js'
 import type { KeymapSelection } from '../chords/runtime.js'
-import type { KeymapNode } from '../chords/trie.js'
+import type { KeymapEdge, KeymapNode } from '../chords/trie.js'
 
 /**
  * Where a binding comes from, weakest first, as Zed's sources: the default keymap, a base layout
@@ -193,15 +193,20 @@ function pendingChords(
   const remaining = [node]
   while (remaining.length) {
     const current = remaining.pop()!
-    for (const edges of current.next.values()) {
-      for (const edge of edges) {
-        if (edge) remaining.push(edge.node)
-      }
-    }
+    for (const edges of current.next.values()) appendChildNodes(remaining, edges)
     if (current === node || current.candidates.length === 0) continue
     if (hasPendingBinding(current.candidates, stack, firstIndex, isAvailable)) count += 1
   }
   return count
+}
+
+function appendChildNodes(
+  remaining: KeymapNode<CompiledBinding>[],
+  edges: readonly (KeymapEdge<CompiledBinding> | undefined)[],
+): void {
+  for (const edge of edges) {
+    if (edge) remaining.push(edge.node)
+  }
 }
 
 function hasPendingBinding(
