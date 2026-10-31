@@ -77,11 +77,35 @@ console.log('Packed core and React adapter load in Node with one core instance.'
   execFileSync(process.execPath, ['consumer.mjs'], { cwd: temporary, stdio: 'inherit' })
   await writeFile(
     join(temporary, 'consumer.ts'),
-    `import { createDispatcher, parseHotkey } from '@fregat/hotkeys'
-import { useHotkey } from '@fregat/react-hotkeys'
+    `import { createDispatcher, formatHotkeySequence, parseHotkey } from '@fregat/hotkeys'
+import { useHotkey, useHotkeys, useHotkeySequence, useHotkeySequences } from '@fregat/react-hotkeys'
+import type { HotkeySequence } from '@fregat/hotkeys'
+import type { ReactHotkeySequenceRecorder, UseHotkeyDefinition, UseHotkeySequenceDefinition } from '@fregat/react-hotkeys'
 parseHotkey('Mod+S', 'linux')
 createDispatcher({ platform: 'linux', keymap: [] })
 useHotkey('Mod+S', () => {})
+
+const readonlySequence = ['Control+[KeyK]', 'Control+[KeyC]'] as const
+const readonlyHotkeys = [{ hotkey: 'Escape', callback: () => {} }] as const
+const readonlySequences = [{ sequence: ['G', 'G'], callback: () => {} }] as const
+formatHotkeySequence(readonlySequence)
+useHotkeySequence(readonlySequence, () => {})
+useHotkeys(readonlyHotkeys)
+useHotkeySequences(readonlySequences)
+
+const mutableSequence: HotkeySequence = ['G', 'G']
+const mutableHotkeys: Array<UseHotkeyDefinition> = [{ hotkey: 'Escape', callback: () => {} }]
+const mutableSequences: Array<UseHotkeySequenceDefinition> = [{ sequence: mutableSequence, callback: () => {} }]
+mutableSequences[0]!.sequence.push('Escape')
+formatHotkeySequence(mutableSequence)
+useHotkeySequence(mutableSequence, () => {})
+useHotkeys(mutableHotkeys)
+useHotkeySequences(mutableSequences)
+
+const recorderSteps: ReactHotkeySequenceRecorder['steps'] = []
+const recordedSequence: NonNullable<ReactHotkeySequenceRecorder['recordedSequence']> = []
+recorderSteps.push('Escape')
+recordedSequence.push('Escape')
 `,
   )
   for (const [resolution, module] of [

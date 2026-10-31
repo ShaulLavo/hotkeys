@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
 import { useSelector } from '@tanstack/react-store'
 import { HotkeySequenceRecorder } from '@fregat/hotkeys'
 import { useDefaultHotkeysOptions } from './HotkeysProvider.js'
@@ -20,6 +20,7 @@ export interface ReactHotkeySequenceRecorder {
 
 /**
  * React hook for recording multi-chord sequences (Vim-style shortcuts).
+ * Control functions keep the same identity across renders.
  *
  * @param options - Configuration options for the hotkey sequence recorder
  */
@@ -44,13 +45,18 @@ export function useHotkeySequenceRecorder(
 
   useEffect(() => () => recorder.destroy(), [recorder])
 
+  const startRecording = useCallback(() => recorder.start(), [recorder])
+  const stopRecording = useCallback(() => recorder.stop(), [recorder])
+  const cancelRecording = useCallback(() => recorder.cancel(), [recorder])
+  const commitRecording = useCallback(() => recorder.commit(), [recorder])
+
   return {
     isRecording,
     steps,
     recordedSequence,
-    startRecording: () => recorder.start(),
-    stopRecording: () => recorder.stop(),
-    cancelRecording: () => recorder.cancel(),
-    commitRecording: () => recorder.commit(),
+    startRecording,
+    stopRecording,
+    cancelRecording,
+    commitRecording,
   }
 }

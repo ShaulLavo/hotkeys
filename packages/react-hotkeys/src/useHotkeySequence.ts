@@ -63,7 +63,7 @@ export interface UseHotkeySequenceOptions extends Omit<HotkeyOptions, 'target'> 
  * ```
  */
 export function useHotkeySequence(
-  sequence: HotkeySequence,
+  sequence: Readonly<HotkeySequence>,
   callback: HotkeyCallback,
   options: UseHotkeySequenceOptions = {},
 ): void {
