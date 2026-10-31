@@ -7,10 +7,13 @@ import type { HotkeyCallback, HotkeySequence, HotkeyRegistrationHandle } from '@
 
 /**
  * A single sequence definition for use with `useHotkeySequences`.
+ * The sequence type defaults to a mutable array for definition builders.
  */
-export interface UseHotkeySequenceDefinition {
+export interface UseHotkeySequenceDefinition<
+  Sequence extends Readonly<HotkeySequence> = HotkeySequence,
+> {
   /** Array of hotkey strings that form the sequence */
-  sequence: HotkeySequence
+  sequence: Sequence
   /** The function to call when the sequence is completed */
   callback: HotkeyCallback
   /** Per-sequence options (merged on top of commonOptions) */
@@ -62,7 +65,7 @@ export interface UseHotkeySequenceDefinition {
  * ```
  */
 export function useHotkeySequences(
-  definitions: Array<UseHotkeySequenceDefinition>,
+  definitions: ReadonlyArray<UseHotkeySequenceDefinition<Readonly<HotkeySequence>>>,
   commonOptions: UseHotkeySequenceOptions = {},
 ): void {
   type RegistrationRecord = {
@@ -98,7 +101,7 @@ export function useHotkeySequences(
     const rows: Array<{
       registrationKey: string
       def: (typeof definitionsRef.current)[number]
-      seq: HotkeySequence
+      seq: Readonly<HotkeySequence>
       seqStr: string
       mergedOptions: UseHotkeySequenceOptions
       resolvedTarget: Document | HTMLElement | Window

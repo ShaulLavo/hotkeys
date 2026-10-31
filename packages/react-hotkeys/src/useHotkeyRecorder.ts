@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
 import { useSelector } from '@tanstack/react-store'
 import { HotkeyRecorder } from '@fregat/hotkeys'
 import { useDefaultHotkeysOptions } from './HotkeysProvider.js'
@@ -11,7 +11,7 @@ export interface ReactHotkeyRecorder {
   recordedHotkey: Hotkey | null
   /** Start recording a new hotkey */
   startRecording: () => void
-  /** Stop recording (same as cancel) */
+  /** Stop recording without invoking onCancel */
   stopRecording: () => void
   /** Cancel recording without saving */
   cancelRecording: () => void
@@ -24,6 +24,7 @@ export interface ReactHotkeyRecorder {
  * class, managing all the complexity of capturing keyboard events, converting them
  * to hotkey strings, and handling edge cases like Escape to cancel or Backspace/Delete
  * to clear.
+ * Control functions keep the same identity across renders.
  *
  * @param options - Configuration options for the recorder
  * @returns An object with recording state and control functions
@@ -73,11 +74,15 @@ export function useHotkeyRecorder(options: HotkeyRecorderOptions): ReactHotkeyRe
 
   useEffect(() => () => recorder.destroy(), [recorder])
 
+  const startRecording = useCallback(() => recorder.start(), [recorder])
+  const stopRecording = useCallback(() => recorder.stop(), [recorder])
+  const cancelRecording = useCallback(() => recorder.cancel(), [recorder])
+
   return {
     isRecording,
     recordedHotkey,
-    startRecording: () => recorder.start(),
-    stopRecording: () => recorder.stop(),
-    cancelRecording: () => recorder.cancel(),
+    startRecording,
+    stopRecording,
+    cancelRecording,
   }
 }

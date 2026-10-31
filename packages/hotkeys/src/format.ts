@@ -31,7 +31,7 @@ import type { Hotkey, ParsedHotkey, RegisterableHotkey } from './hotkey.types.js
  * formatHotkeySequence(['D', 'I', 'W']) // 'D I W'
  * ```
  */
-export function formatHotkeySequence(sequence: Array<Hotkey>): string {
+export function formatHotkeySequence(sequence: ReadonlyArray<Hotkey>): string {
   return sequence.join(' ')
 }
 

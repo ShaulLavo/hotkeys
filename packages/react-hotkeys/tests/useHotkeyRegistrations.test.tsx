@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, renderHook } from '@testing-library/react'
+import { act, cleanup, renderHook } from '@testing-library/react'
 import { getHotkeyRegistry } from '@fregat/hotkeys'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useHotkeyRegistrations } from '../src/useHotkeyRegistrations'
@@ -10,6 +10,7 @@ describe('useHotkeyRegistrations', () => {
   })
 
   afterEach(() => {
+    cleanup()
     getHotkeyRegistry().dispose()
   })
 
@@ -170,5 +171,52 @@ describe('useHotkeyRegistrations', () => {
     expect(result.current.hotkeys[0]!.options.meta?.description).toBe('Save document')
     expect(result.current.sequences[0]!.options.meta?.name).toBe('Go to top')
     expect(result.current.sequences[0]!.options.meta?.description).toBe('Scroll to the top')
+  })
+
+  it('keeps partition references stable until the registry changes', () => {
+    const registry = getHotkeyRegistry()
+    registry.register('Escape', vi.fn())
+    registry.register(['G', 'G'], vi.fn())
+    const { result, rerender } = renderHook(() => useHotkeyRegistrations())
+    const previous = result.current
+
+    rerender()
+
+    expect(result.current.hotkeys).toBe(previous.hotkeys)
+    expect(result.current.sequences).toBe(previous.sequences)
+  })
+
+  it('preserves partition order while publishing options, counts and removals', () => {
+    const registry = getHotkeyRegistry()
+    const firstSequence = registry.register(['D', 'D'], vi.fn())
+    const firstHotkey = registry.register('Escape', vi.fn())
+    const secondSequence = registry.register(['G', 'G'], vi.fn())
+    const secondHotkey = registry.register('S', vi.fn())
+    const { result } = renderHook(() => useHotkeyRegistrations())
+    const previous = result.current
+
+    act(() => {
+      firstHotkey.setOptions({ meta: { name: 'Close' }, enabled: false })
+      registry.trigger(secondSequence.id)
+    })
+
+    expect(result.current.hotkeys.map((view) => view.id)).toEqual([firstHotkey.id, secondHotkey.id])
+    expect(result.current.sequences.map((view) => view.id)).toEqual([
+      firstSequence.id,
+      secondSequence.id,
+    ])
+    expect(result.current.hotkeys[0]!.options.meta?.name).toBe('Close')
+    expect(result.current.hotkeys[0]!.options.enabled).toBe(false)
+    expect(result.current.sequences[1]!.triggerCount).toBe(1)
+    expect(previous.hotkeys[0]!.options.meta).toBeUndefined()
+    expect(previous.sequences[1]!.triggerCount).toBe(0)
+
+    act(() => {
+      firstHotkey.unregister()
+      firstSequence.unregister()
+    })
+
+    expect(result.current.hotkeys.map((view) => view.id)).toEqual([secondHotkey.id])
+    expect(result.current.sequences.map((view) => view.id)).toEqual([secondSequence.id])
   })
 })

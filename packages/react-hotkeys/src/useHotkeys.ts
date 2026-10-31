@@ -67,7 +67,7 @@ export interface UseHotkeyDefinition {
  * ```
  */
 export function useHotkeys(
-  hotkeys: Array<UseHotkeyDefinition>,
+  hotkeys: ReadonlyArray<UseHotkeyDefinition>,
   commonOptions: UseHotkeyOptions = {},
 ): void {
   type RegistrationRecord = {
