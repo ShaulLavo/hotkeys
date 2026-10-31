@@ -49,6 +49,8 @@ hotkeys.attachElement(editor, editorElement)
 
 `{ keys, unbind: 'command' }` removes one key→command pair where its context matches and leaves other commands on those keys. `command: null` removes every binding on the keys for equal and weaker sources where its context matches
 
+these rules also decide whether a chord prefix waits. if `K C` runs `one` and `two`, unbinding `two` leaves `one` reachable: `K` still waits for `C`. a weaker source's null removal cannot hide a stronger surviving chord. pending counts represent distinct surviving chord paths, so two commands on `K C` count as one continuation
+
 nothing refuses a collision. `bindingsForInput(compileKeymap(entries, platform), keys, stack)` reports what a key would run under a given context stack, for settings screens
 
 ## declining a command
@@ -71,7 +73,9 @@ strokes separated by spaces form a chord. when an eligible longer chord keeps th
 - a pending prefix that is itself bound waits `timeoutMs` (one second by default) for its continuation, then tries its exact bindings. a bound prefix with no eligible continuation runs immediately; ordering can exclude a continuation, as described below
 - an unbound prefix normally waits for the next key. it also times out when `acceptsTextInput(source)` is true and the buffered stroke is printable or `Space`, without Control or Meta
 - once a timeout starts, it restarts as the chord advances, including through unbound prefixes
-- a key that does not continue the chord ends it: the longest bound buffered prefix runs, the other buffered keys go to your `replay` hook, and the new key is matched from scratch
+- a key that does not continue the chord ends it: the longest bound buffered prefix is tried first. remaining buffered keys may combine with the new key into another chord; otherwise they are replayed or resolved before the new key is matched from scratch
+- when every candidate for a buffered prefix declines, every stroke of that prefix is replayed once, in order, with its original input and source. shorter bindings inside that replayed prefix are not tried again
+- when a chord completes but every handler declines, its earlier buffered strokes are replayed and the current event keeps its normal input handling. a successful claim or explicit `preventDefault: true` / `stopPropagation: true` retains ownership instead of replaying the chord
 - a pending chord belongs to the focus it started under. it ends on focus change, blur, a hidden tab or pointer down
 
 ```ts
@@ -108,6 +112,8 @@ const runsSearchImmediately = [
 context depth and source choose the exact binding that sets the cutoff. an earlier exact binding can therefore set it ahead of a later, lower-ranked exact binding. the continuation is not compared against that winner's depth or source again: its table position decides whether it passes the cutoff
 
 the continuation must still match the current context and pass the dispatcher's `isAvailable` check, when supplied. an inactive continuation does not make a bound prefix wait. if the exact binding is inactive, another exact binding may set the cutoff; if none survives, there is no exact-binding cutoff. shadowing therefore depends on the current context and availability, not just the table in isolation
+
+each continuation's complete candidate set is ranked and processed for removals before the cutoff is applied to surviving commands. a removal listed before the exact prefix can therefore still remove a later continuation. the cutoff does not discard removals or change the resolution policy for the complete chord
 
 ## terminals
 

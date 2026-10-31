@@ -54,7 +54,7 @@ createBrowserDispatcher({
 
 ## characters vanish after a chord prefix
 
-an unmatched prefix hands its buffered keys to `replay`. in the browser, text fields get the character back. in a terminal host you pass `replay` yourself and write the encoded key to the shell
+an unmatched or declined prefix hands each unclaimed buffered key to `replay`, in order. in the browser, text fields get those characters back. in a terminal host you pass `replay` yourself and write the encoded keys to the shell. the current unclaimed event passes through normally, so the replay callback must not insert it a second time
 
 ## the same shortcut warns about a conflict
 

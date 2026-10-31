@@ -126,7 +126,7 @@ try {
   console.log('Packed JavaScript source maps resolve to embedded TypeScript originals.')
   const consumer = `
 import assert from 'node:assert/strict'
-import { parseHotkey, getHotkeyRegistry } from '@fregat/hotkeys'
+import { createDispatcher, createKeyInput, parseHotkey, getHotkeyRegistry } from '@fregat/hotkeys'
 import {
   getHotkeyRegistry as reactRegistry,
   HotkeysProvider,
@@ -147,6 +147,42 @@ import { renderToString } from 'react-dom/server'
 assert.equal(parseHotkey('Mod+S', 'linux').ctrl, true)
 assert.equal(parseHotkey('Mod+S', 'mac').meta, true)
 assert.equal(reactRegistry, getHotkeyRegistry)
+
+const chordLog = []
+const chordDispatcher = createDispatcher({
+  platform: 'linux',
+  keymap: [
+    { keys: 'K C', command: 'keep', source: 'default' },
+    { keys: 'K C', command: 'remove', source: 'default' },
+    { keys: 'K C', unbind: 'remove', source: 'user' },
+    { keys: 'G H', command: 'decline' },
+    { keys: 'G H I', command: 'longer' },
+  ],
+  replay: input => chordLog.push(input.key),
+})
+chordDispatcher.createNode({
+  commands: {
+    keep: () => void chordLog.push('keep'),
+    remove: () => assert.fail('Unbound command ran'),
+    decline: () => false,
+    longer: () => assert.fail('Incomplete chord ran'),
+  },
+}).focus()
+const press = key => chordDispatcher.handleKey(createKeyInput({ key }), null)
+try {
+  assert.equal(press('K'), true)
+  assert.equal(chordDispatcher.pending()?.candidateCount, 1)
+  assert.equal(press('C'), true)
+  assert.deepEqual(chordLog, ['keep'])
+  assert.equal(press('G'), true)
+  assert.equal(press('H'), true)
+  assert.equal(press('X'), false)
+  assert.equal(chordDispatcher.pending(), null)
+  assert.deepEqual(chordLog, ['keep', 'G', 'H'])
+} finally {
+  chordDispatcher.dispose()
+}
+
 assert.equal(typeof window, 'undefined')
 assert.equal(typeof document, 'undefined')
 
