@@ -125,6 +125,48 @@ it('registers a sequence as a chord whose prefix does not reach the page', () =>
   expect(callback).toHaveBeenCalledOnce()
 })
 
+it('publishes metadata changes without interrupting a pending chord', () => {
+  const callback = vi.fn()
+  const hotkeys = setup()
+  const handle = hotkeys.register(['G', 'H'], callback, { meta: { name: 'old' } })
+  expect(press(document, 'g').defaultPrevented).toBe(true)
+
+  handle.setOptions({ meta: { name: 'new' } })
+  expect(hotkeys.registrations.state.get(handle.id)?.options.meta).toEqual({ name: 'new' })
+  expect(press(document, 'h').defaultPrevented).toBe(true)
+  expect(callback).toHaveBeenCalledOnce()
+  expect(hotkeys.registrations.state.get(handle.id)?.triggerCount).toBe(1)
+})
+
+it('preserves an unsynchronized keymap during metadata-only updates', () => {
+  const callback = vi.fn()
+  const hotkeys = setup()
+  const handle = hotkeys.register(['G', 'H'], callback)
+  handle.setOptions({ meta: { name: 'new' } })
+
+  press(document, 'g')
+  press(document, 'h')
+  expect(callback).toHaveBeenCalledOnce()
+  expect(hotkeys.registrations.state.get(handle.id)?.options.meta).toEqual({ name: 'new' })
+})
+
+it('still invalidates a pending chord when metadata and matching options change', () => {
+  const callback = vi.fn()
+  const hotkeys = setup()
+  const handle = hotkeys.register(['G', 'H'], callback)
+  press(document, 'g')
+
+  handle.setOptions({ meta: { name: 'disabled' }, enabled: false })
+  expect(press(document, 'h').defaultPrevented).toBe(false)
+  expect(callback).not.toHaveBeenCalled()
+  expect(hotkeys.registrations.state.get(handle.id)?.options.meta).toEqual({ name: 'disabled' })
+
+  handle.setOptions({ enabled: true })
+  press(document, 'g')
+  press(document, 'h')
+  expect(callback).toHaveBeenCalledOnce()
+})
+
 it('fires keyup registrations on release', () => {
   const callback = vi.fn()
   setup().register('Escape', callback, { eventType: 'keyup' })

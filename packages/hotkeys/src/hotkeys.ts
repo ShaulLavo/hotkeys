@@ -143,8 +143,8 @@ export function createHotkeyRegistry(
     }
     dispatcher.setKeymap(keymap)
   }
-  function publish() {
-    dirty = true
+  function publish(invalidateKeymap = true) {
+    if (invalidateKeymap) dirty = true
     const views = new Map<string, HotkeyRegistrationView>()
     for (const entry of entries.values()) views.set(entry.id, view(entry))
     registrations.setState(() => views)
@@ -240,8 +240,15 @@ export function createHotkeyRegistry(
       setOptions: (next) => {
         const merged = { ...entry.options, ...next }
         if (optionsEqual(entry.options, merged)) return
+        // Display-only changes must not reset a chord already in progress.
+        const changesKeymap = Object.entries(merged).some(
+          ([key, value]) =>
+            key !== 'meta' &&
+            (!Object.hasOwn(entry.options, key) ||
+              !Object.is(entry.options[key as keyof HotkeyOptions], value)),
+        )
         entry.options = merged
-        publish()
+        publish(changesKeymap)
       },
       unregister: () => remove(id),
     }

@@ -19,7 +19,7 @@ export type CommandEvent<Source> = {
   readonly args: unknown
   /** The node that handles the command; the focused node or one of its ancestors. */
   readonly node: FocusNode<Source>
-  /** The key that triggered the command, or null for {@link Dispatcher.dispatchCommand}. */
+  /** The triggering stroke, including saved prefixes; null for programmatic commands. */
   readonly input: KeyInput | null
   readonly source: Source | null
 }
@@ -139,7 +139,7 @@ export function createDispatcher<Source = unknown>(
         captured.stack,
         isAvailable && ((binding) => isAvailable(binding, source)),
       ),
-    dispatch: (binding, captured, source) => runBinding(binding, captured, source),
+    dispatch: runBinding,
     currentFocus,
     replay: options.replay,
     acceptsTextInput: options.acceptsTextInput,
@@ -148,7 +148,6 @@ export function createDispatcher<Source = unknown>(
     onSequence: options.onSequence,
     onCaptureChange: options.onCaptureChange,
   })
-  let currentInput: KeyInput | null = null
   // One object per focus pair, so the runtime compares focus by identity.
   let focusIdentity: { readonly node: FocusNode<Source> | null; readonly host: unknown } = {
     node: null,
@@ -191,11 +190,12 @@ export function createDispatcher<Source = unknown>(
     binding: KeymapBinding<CompiledBinding>,
     captured: Captured<Source>,
     source: Source,
+    input: KeyInput,
   ): boolean {
     const { command, entry } = binding.payload
     if (command === null) return false
     const args = 'args' in entry ? entry.args : undefined
-    return runCommand(captured.path, command, args, currentInput, source)
+    return runCommand(captured.path, command, args, input, source)
   }
   function runCommand(
     path: readonly NodeState<Source>[],
@@ -268,14 +268,6 @@ export function createDispatcher<Source = unknown>(
     if (node && !hasNode(node)) return
     focusedNode = node
   }
-  function handleKey(input: KeyInput, source: Source, inScope = true): boolean {
-    currentInput = input
-    try {
-      return runtime.handleKey(input, source, inScope)
-    } finally {
-      currentInput = null
-    }
-  }
   function setKeymap(entries: readonly KeymapEntry[]) {
     keymap = compileKeymap(entries, platform)
     runtime.updateBindings(keymap.bindings)
@@ -287,7 +279,7 @@ export function createDispatcher<Source = unknown>(
     hasNode,
     contextStack: () => capture().stack,
     setKeymap,
-    handleKey,
+    handleKey: runtime.handleKey,
     dispatchCommand: (command, args) => runCommand(focusPath(), command, args, null, null),
     dispatchCommandFrom: (node, command, args) =>
       runCommand(focusPath(node), command, args, null, null),
