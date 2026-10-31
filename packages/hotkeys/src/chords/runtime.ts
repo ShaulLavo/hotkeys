@@ -39,8 +39,16 @@ export type ChordRuntimeOptions<Payload, Context, Source> = {
     context: Context,
     source: Source,
   ) => KeymapSelection<Payload>
-  /** Returns false to decline; the next available candidate then gets the key. */
-  readonly dispatch: (binding: KeymapBinding<Payload>, context: Context, source: Source) => boolean
+  /**
+   * Receives the original triggering input, including when a buffered prefix runs later.
+   * Returns false to decline; the next available candidate then gets the key.
+   */
+  readonly dispatch: (
+    binding: KeymapBinding<Payload>,
+    context: Context,
+    source: Source,
+    input: KeyInput,
+  ) => boolean
   readonly onPendingChange?: (pending: PendingChordLabel | null) => void
   readonly onSequence?: (event: KeymapSequenceEvent<Payload>) => void
   /** Called whenever {@link ChordRuntime.wantsCapture} may have changed. */
@@ -246,7 +254,7 @@ export function createChordRuntime<Payload, Context, Source>(
       return { claimed: null, rest: buffer.slice(1) }
     }
     const last = buffer[end.index]!
-    const result = execute(end.bindings, context, last.source)
+    const result = execute(end.bindings, context, last.source, last.input)
     if (result.kind === 'declined' || result.kind === 'unavailable')
       options.replay?.(last.input, last.source)
     const claimed = result.kind === 'claimed' ? result.binding : null
@@ -272,10 +280,11 @@ export function createChordRuntime<Payload, Context, Source>(
     bindings: readonly KeymapBinding<Payload>[],
     context: Context,
     source: Source,
+    input: KeyInput,
   ): DispatchResult<Payload> {
     let handled = false
     for (const binding of bindings) {
-      const result = dispatchBinding(binding, context, source)
+      const result = dispatchBinding(binding, context, source, input)
       const claimed = result.kind === 'claimed'
       if (binding.preventDefault === true || (claimed && binding.preventDefault !== false))
         effects.preventDefault(source)
@@ -291,12 +300,13 @@ export function createChordRuntime<Payload, Context, Source>(
     binding: KeymapBinding<Payload>,
     context: Context,
     source: Source,
+    input: KeyInput,
   ): DispatchResult<Payload> {
     const operation: { cancellation: ChordOutcome | null } = { cancellation: null }
     activeDispatch = operation
     let claimed: boolean
     try {
-      claimed = options.dispatch(binding, context, source)
+      claimed = options.dispatch(binding, context, source, input)
     } finally {
       activeDispatch = null
     }
@@ -365,7 +375,7 @@ export function createChordRuntime<Payload, Context, Source>(
   }
   function resumeSequence(sequence: Sequence<Payload, Context, Source>): Ownership | null {
     const { buffer, selection } = sequence
-    const { source } = buffer.at(-1)!
+    const { input, source } = buffer.at(-1)!
     if (selection.pending) {
       effects.swallow(source)
       setPending({
@@ -379,7 +389,7 @@ export function createChordRuntime<Payload, Context, Source>(
       })
       return 'chord'
     }
-    const result = execute(selection.bindings, sequence.context, source)
+    const result = execute(selection.bindings, sequence.context, source, input)
     if (result.kind === 'claimed' || result.kind === 'handled' || result.kind === 'cancelled') {
       effects.swallow(source)
       return 'chord'
@@ -402,7 +412,7 @@ export function createChordRuntime<Payload, Context, Source>(
       arm(edge, { input, source }, selection.pending, selection.bindings.length > 0)
       return 'chord'
     }
-    const result = execute(selection.bindings, context, source)
+    const result = execute(selection.bindings, context, source, input)
     const owned =
       result.kind === 'claimed' || result.kind === 'handled' || result.kind === 'cancelled'
     if (fromChord && owned) effects.swallow(source)
