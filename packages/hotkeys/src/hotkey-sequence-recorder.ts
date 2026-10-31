@@ -120,11 +120,20 @@ export class HotkeySequenceRecorder {
 
   /** Merges current callbacks and options without discarding recorded steps. */
   setOptions(options: Partial<HotkeySequenceRecorderOptions>): void {
+    this.replaceOptions({ ...this.#options, ...options })
+  }
+
+  /**
+   * Replaces callbacks and options without discarding recorded steps. A changed idle timeout
+   * restarts the active countdown from this update; omitting it cancels the countdown.
+   */
+  replaceOptions(options: HotkeySequenceRecorderOptions): void {
+    const timeoutChanged = options.idleTimeoutMs !== this.#options.idleTimeoutMs
     this.#options = {
       ...defaultHotkeySequenceRecorderOptions,
-      ...this.#options,
       ...options,
     }
+    if (timeoutChanged && this.#keydownHandler) this.#scheduleIdleTimer()
   }
 
   /** Cancels a pending idle commit so it cannot fire after editing or stopping. */

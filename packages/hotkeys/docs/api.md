@@ -4,17 +4,27 @@ every export of `@fregat/hotkeys`, grouped by job. the source of truth is [`src/
 
 ## register shortcuts
 
-| export                                              | does                                                                                                       |
-| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `getHotkeyRegistry(doc?)`                           | the shared registry for a document                                                                         |
-| `createHotkeyRegistry(...)`                         | a registry you own                                                                                         |
-| `HotkeyRegistry.register(keys, callback, options?)` | registers a key or a chord and returns a handle with `unregister`, `setOptions`, and a settable `callback` |
-| `HotkeyRegistry.registrations`                      | a store of live registrations, for palettes and devtools                                                   |
-| `HotkeyRegistry.trigger(id)`                        | runs a callback without a key                                                                              |
-| `HotkeyRegistry.dispatcher`                         | the browser dispatcher underneath                                                                          |
-| `findHotkeyConflicts(candidate, options?)`          | lists live registrations that a new shortcut would collide with, for settings screens                      |
+| export                                              | does                                                                                                                         |
+| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `getHotkeyRegistry(doc?)`                           | the shared registry for a document                                                                                           |
+| `createHotkeyRegistry(...)`                         | a registry you own                                                                                                           |
+| `HotkeyRegistry.register(keys, callback, options?)` | registers a key or a chord and returns a handle with `unregister`, `setOptions`, `replaceOptions`, and a settable `callback` |
+| `HotkeyRegistry.registrations`                      | a store of live registrations, for palettes and devtools                                                                     |
+| `HotkeyRegistry.trigger(id)`                        | runs a callback without a key                                                                                                |
+| `HotkeyRegistry.dispatcher`                         | the browser dispatcher underneath                                                                                            |
+| `findHotkeyConflicts(candidate, options?)`          | lists live registrations that a new shortcut would collide with, for settings screens                                        |
 
 registration options: `conflictBehavior` (`'warn'` by default), `enabled`, `eventType`, `ignoreInputs`, `platform`, `preventDefault`, `requireReset`, `stopPropagation`, `target`, `meta`
+
+### update a registration
+
+`handle.setOptions(patch)` merges the supplied fields into the current configuration. omitted fields keep their previous values. `handle.replaceOptions(options)` replaces that configuration, so omitted fields return to their defaults. explicitly setting a field to `undefined` also restores its default. `ignoreInputs` is computed from the registered shortcut when no override remains: Control/Meta combinations and Escape work inside inputs; bare keys and Shift/Alt combinations are ignored there
+
+both setters keep the handle, registration order, callback, and trigger count. changing `platform` reparses the original strokes, so `Mod` follows the new platform while literal `Control` and `Meta` retain their meaning. the registration view and callback metadata follow the updated binding. changing `target` moves the scope within the registry's document; it does not move the document listener. a target belonging to another document is rejected before the registration changes. use `createHotkeyRegistry({ document: otherDocument })` for that document
+
+changes to matching or event behavior cancel a pending chord. target, platform, and event-type changes also re-arm `requireReset`. metadata-only changes, callback updates, and unchanged effective options preserve pending input. changing a registration's target, event type, or resolved keys checks the resulting conflict using its current `conflictBehavior`; a rejected update leaves the old registration active. option updates to an unregistered handle do nothing
+
+callback binding metadata is captured before publishing the trigger count. if a store subscriber changes the registration during that publication, the callback still describes the binding that matched the event; later events use the updated binding
 
 ## route keys by focus
 
@@ -66,6 +76,8 @@ dispatcher options: `keymap`, `platform`, `timeoutMs`, `replay`, `acceptsTextInp
 | `KeyStateTracker`, `getKeyStateTracker()` | tracks held keys                                         |
 | `matchesHeldModifiers(hotkey, heldKeys)`  | whether the held modifiers should reveal a shortcut hint |
 
+both recorder classes support `setOptions(patch)` and `replaceOptions(options)`. replacement requires `onRecord` and removes omitted optional callbacks and settings without stopping an active recording or discarding its steps. changes to a sequence recorder's `idleTimeoutMs` restart its active countdown from the update; removing the timeout cancels it. callback-only updates and unchanged timeout values preserve the deadline
+
 ## low level
 
 `createChordRuntime`, `buildKeymapTrie`, `trieStep`, `createKeymapRuntime`, `attachKeyListeners`, `keyInputFromKeyboardEvent`, `createKeyInput`. use these to build a new adapter. most apps never need them
@@ -82,6 +94,14 @@ useHotkey('Mod+S', save, { target: editorRef })
 ```
 
 `HotkeysProvider` takes `defaultOptions` with the keys `hotkey`, `hotkeySequence`, `hotkeyRecorder`, and `hotkeySequenceRecorder`. each holds defaults for the matching hook. the react hooks use the registry, so they do not have focus contexts. for those, use `registry.dispatcher` or a dispatcher from `@fregat/hotkeys`
+
+### option changes in React
+
+registration and recorder hooks replace their option configuration after each committed render. current provider defaults are applied first, then hook/common options, then per-definition options for batches. removing a prop reveals the current lower-level default; removing that default too restores the core behavior. for example, switching from `{ enabled: false }` to `{}` enables a shortcut unless a current provider/common default still disables it. removed recorder callbacks no longer run
+
+target and platform updates preserve an existing registration's handle and trigger count. a ref with no attached element removes the registration until a later committed render supplies a target; an omitted or `null` target uses the document. changing the shortcut or sequence itself creates a new registration. batch rows still use their list position and shortcut as identity, so insertion/reordering can replace handles
+
+equivalent string and raw bindings, key aliases, and letter case preserve registration identity and priority. symbolic `Mod` remains distinct from literal Control or Meta because it resolves differently across platforms
 
 ### server rendering
 

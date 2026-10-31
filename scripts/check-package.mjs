@@ -144,6 +144,7 @@ import {
 } from '@fregat/react-hotkeys'
 import { createElement } from 'react'
 import { renderToString } from 'react-dom/server'
+import { HotkeyRecorder, HotkeySequenceRecorder } from '@fregat/hotkeys'
 assert.equal(parseHotkey('Mod+S', 'linux').ctrl, true)
 assert.equal(parseHotkey('Mod+S', 'mac').meta, true)
 assert.equal(reactRegistry, getHotkeyRegistry)
@@ -297,18 +298,47 @@ assert.equal(callbackCount, 0)
 assert.equal(typeof window, 'undefined')
 assert.equal(typeof document, 'undefined')
 console.log('Packed React hooks server-render in Node without a DOM and share one core instance.')
+
+for (const Recorder of [HotkeyRecorder, HotkeySequenceRecorder]) {
+  let cancellations = 0
+  const recorder = new Recorder({
+    onRecord: () => {},
+    onCancel: () => { cancellations += 1 },
+  })
+  try {
+    recorder.setOptions({ ignoreInputs: false })
+    recorder.cancel()
+    assert.equal(cancellations, 1, 'Patching options must retain omitted callbacks')
+    recorder.replaceOptions({ onRecord: () => {} })
+    recorder.cancel()
+    assert.equal(cancellations, 1, 'Replacing options must remove omitted callbacks')
+  } finally {
+    recorder.destroy()
+  }
+}
 `
   await writeFile(join(temporary, 'consumer.mjs'), consumer)
   execFileSync(process.execPath, ['consumer.mjs'], { cwd: temporary, stdio: 'inherit' })
   await writeFile(
     join(temporary, 'consumer.ts'),
-    `import { createDispatcher, formatHotkeySequence, parseHotkey } from '@fregat/hotkeys'
+    `import { createDispatcher, createHotkeyRegistry, formatHotkeySequence, HotkeyRecorder, HotkeySequenceRecorder, parseHotkey } from '@fregat/hotkeys'
 import { useHotkey, useHotkeys, useHotkeySequence, useHotkeySequences } from '@fregat/react-hotkeys'
 import type { HotkeySequence } from '@fregat/hotkeys'
 import type { ReactHotkeySequenceRecorder, UseHotkeyDefinition, UseHotkeySequenceDefinition } from '@fregat/react-hotkeys'
 parseHotkey('Mod+S', 'linux')
 createDispatcher({ platform: 'linux', keymap: [] })
 useHotkey('Mod+S', () => {})
+
+const registration = createHotkeyRegistry().register('Mod+S', () => {}, { platform: 'linux' })
+registration.setOptions({ platform: 'mac' })
+registration.replaceOptions({ target: document })
+registration.unregister()
+const recorder = new HotkeyRecorder({ onRecord: () => {} })
+recorder.setOptions({ ignoreInputs: false })
+recorder.replaceOptions({ onRecord: () => {} })
+const sequenceRecorder = new HotkeySequenceRecorder({ onRecord: () => {} })
+sequenceRecorder.setOptions({ idleTimeoutMs: 1000 })
+sequenceRecorder.replaceOptions({ onRecord: () => {} })
 
 const readonlySequence = ['Control+[KeyK]', 'Control+[KeyC]'] as const
 const readonlyHotkeys = [{ hotkey: 'Escape', callback: () => {} }] as const

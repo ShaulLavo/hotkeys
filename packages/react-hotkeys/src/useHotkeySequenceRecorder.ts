@@ -37,7 +37,7 @@ export function useHotkeySequenceRecorder(
 
   // Callbacks in the options must see the latest render's values.
   useIsomorphicLayoutEffect(() => {
-    recorder.setOptions(mergedOptions)
+    recorder.replaceOptions(mergedOptions)
   })
 
   const isRecording = useSelector(recorder.store, (state) => state.isRecording)
