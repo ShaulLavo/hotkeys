@@ -23,7 +23,7 @@ export type CommandEvent<Source> = {
   readonly input: KeyInput | null
   readonly source: Source | null
 }
-/** Returns false to decline, passing the command to the next ancestor and then the next binding. */
+/** Returns false to try the next handler or binding while the dispatch remains current. */
 export type CommandHandler<Source> = (event: CommandEvent<Source>) => boolean | void
 
 export type FocusNodeContext = KeyContext | KeyContextInit | string
@@ -105,6 +105,8 @@ type NodeState<Source> = {
 type Captured<Source> = {
   readonly path: readonly NodeState<Source>[]
   readonly stack: readonly KeyContext[]
+  readonly revision: number
+  readonly focus: unknown
 }
 
 const NO_EFFECTS: KeyEffects<unknown> = {
@@ -124,6 +126,7 @@ export function createDispatcher<Source = unknown>(
   const states = new Map<FocusNode<Source>, NodeState<Source>>()
   let focusedNode: FocusNode<Source> | null = null
   let disposed = false
+  let commandRevision = 0
   let nextId = 1
   let keymap = compileKeymap(options.keymap ?? [], platform)
   const { isAvailable } = options
@@ -178,13 +181,18 @@ export function createDispatcher<Source = unknown>(
     return true
   }
   function capture(): Captured<Source> {
+    const revision = commandRevision
+    const focus = currentFocus()
     const path = focusPath()
+    return { path, stack: stackFor(path), revision, focus }
+  }
+  function stackFor(path: readonly NodeState<Source>[]): KeyContext[] {
     const stack: KeyContext[] = []
     for (const state of path) {
       const context = state.node.context()
       if (context.identifiers.size || context.values.size) stack.push(context)
     }
-    return { path, stack }
+    return stack
   }
   function runBinding(
     binding: KeymapBinding<CompiledBinding>,
@@ -195,7 +203,14 @@ export function createDispatcher<Source = unknown>(
     const { command, entry } = binding.payload
     if (command === null) return false
     const args = 'args' in entry ? entry.args : undefined
-    return runCommand(captured.path, command, args, input, source)
+    return runCommand(captured.path, command, args, input, source, captured)
+  }
+  function commandIsCurrent(captured: Captured<Source> | undefined): boolean {
+    if (disposed) return false
+    if (!captured) return true
+    if (captured.revision !== commandRevision) return false
+    const focus = currentFocus()
+    return !disposed && captured.revision === commandRevision && captured.focus === focus
   }
   function runCommand(
     path: readonly NodeState<Source>[],
@@ -203,8 +218,9 @@ export function createDispatcher<Source = unknown>(
     args: unknown,
     input: KeyInput | null,
     source: Source | null,
+    captured?: Captured<Source>,
   ): boolean {
-    if (disposed) return false
+    if (!commandIsCurrent(captured)) return false
     const notifications = path.map((state) => ({
       state,
       registrations: Array.from(state.handlers.get(command) ?? []),
@@ -212,7 +228,7 @@ export function createDispatcher<Source = unknown>(
     for (let index = notifications.length - 1; index >= 0; index -= 1) {
       const { state, registrations } = notifications[index]!
       for (const registration of registrations) {
-        if (disposed) return false
+        if (!commandIsCurrent(captured)) return false
         if (!hasNode(state.node) || !state.handlers.get(command)?.has(registration)) continue
         if (registration.handler({ command, args, node: state.node, input, source }) !== false)
           return true
@@ -270,14 +286,19 @@ export function createDispatcher<Source = unknown>(
   }
   function setKeymap(entries: readonly KeymapEntry[]) {
     keymap = compileKeymap(entries, platform)
+    commandRevision += 1
     runtime.updateBindings(keymap.bindings)
+  }
+  function cancel(outcome?: ChordOutcome) {
+    commandRevision += 1
+    runtime.cancel(outcome)
   }
   return {
     createNode,
     focus,
     focused: () => focusedNode,
     hasNode,
-    contextStack: () => capture().stack,
+    contextStack: () => stackFor(focusPath()),
     setKeymap,
     handleKey: runtime.handleKey,
     dispatchCommand: (command, args) => runCommand(focusPath(), command, args, null, null),
@@ -287,7 +308,7 @@ export function createDispatcher<Source = unknown>(
     wantsCapture: runtime.wantsCapture,
     capturesKey: runtime.capturesKey,
     releaseAll: runtime.releaseAll,
-    cancel: runtime.cancel,
+    cancel,
     dispose: () => {
       disposed = true
       runtime.dispose()

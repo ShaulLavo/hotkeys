@@ -74,7 +74,7 @@ strokes separated by spaces form a chord. when an eligible longer chord keeps th
 - an unbound prefix normally waits for the next key. it also times out when `acceptsTextInput(source)` is true and the buffered stroke is printable or `Space`, without Control or Meta
 - once a timeout starts, it restarts as the chord advances, including through unbound prefixes
 - a key that does not continue the chord ends it: the longest bound buffered prefix is tried first. remaining buffered keys may combine with the new key into another chord; otherwise they are replayed or resolved before the new key is matched from scratch
-- when every candidate for a buffered prefix declines, every stroke of that prefix is replayed once, in order, with its original input and source. shorter bindings inside that replayed prefix are not tried again
+- when every candidate for a buffered prefix declines, every stroke of that prefix is replayed once, in order, with its original input and source, while the operation remains active. shorter bindings inside that replayed prefix are not tried again
 - when a chord completes but every handler declines, its earlier buffered strokes are replayed and the current event keeps its normal input handling. a successful claim or explicit `preventDefault: true` / `stopPropagation: true` retains ownership instead of replaying the chord
 - a pending chord belongs to the focus it started under. it ends on focus change, blur, a hidden tab or pointer down
 
@@ -88,6 +88,20 @@ const hotkeys = createBrowserDispatcher({
   onSequence: (event) => log('chord', event.outcome, event.elapsedMs),
 })
 ```
+
+### callbacks and nested input
+
+handlers, replay callbacks and notifications may call `handleKey` synchronously. a completing chord leaves `pending()` and clears its timer before its handler runs. each operation keeps its own buffered input and sequence metadata, so a `G H` handler can start `X Y` without its completion clearing the new pending `X`
+
+ordinary nested input preserves outer candidate fallback and replay with their original inputs and sources. if a nested call starts or completes a chord, the older mismatch operation does not resume a suffix or match its current key again over that newer activity. any remaining old buffered input is replayed while the operation remains active; the current unclaimed key passes through normally
+
+`cancel`, disabling, keymap replacement, disposal and focus changes interrupt remaining fallback and replay. this also applies after the pending buffer has been detached: an input handler that disposes the dispatcher after the first replayed character prevents subsequent characters from being inserted. interrupted recovery reports its cancellation reason instead of a later ordinary timeout or mismatch; disposal suppresses that later report
+
+keyboard dispatch checks interruption between handlers for the same command too, including other handlers on the same node and its ancestors. fresh input captures its focus before selecting or consuming a binding, so a focus change cannot leave a new prefix pending under the old focus
+
+a handler that returns `true` keeps ownership of its input even if it synchronously cancels or disposes the runtime. a successful completion can still report `completed` after cancellation or a focus change, while disposal stops later sequence reports. cancellation alone does not claim a declined fresh single-key shortcut. `releaseAll()` or a nested release of the same key clears held-key ownership even when a handler is still running
+
+keymap replacement is committed before its cancellation notifications run. nested input from those notifications sees the replacement map. pending notifications describe the latest state; an older notification cannot overwrite a newer pending label
 
 ### prefix ordering
 
