@@ -12,9 +12,9 @@ import type {
 
 export interface UseHotkeySequenceOptions extends Omit<HotkeyOptions, 'target'> {
   /**
-   * The DOM element to attach the event listener to.
-   * Can be a React ref, direct DOM element, or null.
-   * Defaults to document.
+   * The scope checked by the document registry's delegated keyboard listeners.
+   * An element target includes its descendants. Accepts a React element ref,
+   * an element, document, window, or null. Defaults to document.
    */
   target?: React.RefObject<HTMLElement | null> | HTMLElement | Document | Window | null
 }
@@ -32,8 +32,9 @@ export interface UseHotkeySequenceOptions extends Omit<HotkeyOptions, 'target'> 
  *
  * @param sequence - Array of hotkey strings that form the sequence
  * @param callback - Function to call when the sequence is completed
- * @param options - Options for the sequence behavior. `enabled: false` keeps the registration (visible in devtools)
- *   and only suppresses firing; the hook updates the existing handle instead of unregistering.
+ * @param options - Options for the sequence behavior. `enabled: false` keeps the registration in the
+ *   registry's observable `registrations` store while suppressing keyboard-triggered callbacks.
+ *   The hook updates the existing handle instead of unregistering.
  *
  * @example
  * ```tsx
@@ -117,7 +118,7 @@ export function useHotkeySequence(
       ? optionsRef.current.target.current
       : (optionsRef.current.target ?? (typeof document !== 'undefined' ? document : null))
 
-    // Skip if no valid target (SSR or ref still null)
+    // Wait until the target is available, for example when a ref is attached.
     if (!resolvedTarget) {
       if (registrationRef.current?.isActive) {
         registrationRef.current.unregister()

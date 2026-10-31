@@ -207,9 +207,12 @@ export type RegisterableHotkey = Hotkey | RawHotkey
  * Context passed to hotkey callbacks along with the keyboard event.
  */
 export interface HotkeyCallbackContext {
-  /** The original hotkey string that was registered */
+  /**
+   * Registry callbacks receive normalized binding text, with sequence strokes joined by spaces.
+   * Standalone match handlers preserve supplied hotkey strings.
+   */
   hotkey: Hotkey
-  /** The parsed representation of the hotkey */
+  /** The parsed stroke; registry sequences expose their first stroke here. */
   parsedHotkey: ParsedHotkey
 }
 
