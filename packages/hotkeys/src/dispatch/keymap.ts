@@ -1,13 +1,13 @@
-import { normalizeRegisterableHotkey } from '../parse'
-import { buildKeymapTrie, trieStep } from '../chords/trie'
-import { parseContextPredicate, predicateDepth } from '../context/predicate'
-import type { RegisterableHotkey } from '../hotkey.types'
-import type { KeyInput } from '../key-input'
-import type { KeyContext } from '../context/key-context'
-import type { ContextPredicate } from '../context/predicate'
-import type { KeyChord, KeymapBinding, KeymapPlatform } from '../chords/types'
-import type { KeymapSelection } from '../chords/runtime'
-import type { KeymapNode } from '../chords/trie'
+import { normalizeRegisterableHotkey } from '../parse.js'
+import { buildKeymapTrie, trieStep } from '../chords/trie.js'
+import { parseContextPredicate, predicateDepth } from '../context/predicate.js'
+import type { RegisterableHotkey } from '../hotkey.types.js'
+import type { KeyInput } from '../key-input.js'
+import type { KeyContext } from '../context/key-context.js'
+import type { ContextPredicate } from '../context/predicate.js'
+import type { KeyChord, KeymapBinding, KeymapPlatform } from '../chords/types.js'
+import type { KeymapSelection } from '../chords/runtime.js'
+import type { KeymapNode } from '../chords/trie.js'
 
 /**
  * Where a binding comes from, weakest first, as Zed's sources: the default keymap, a base layout

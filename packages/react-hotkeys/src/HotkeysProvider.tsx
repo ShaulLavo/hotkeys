@@ -1,8 +1,8 @@
 import { createContext, useContext, useMemo } from 'react'
 import type { ReactNode } from 'react'
 import type { HotkeyRecorderOptions, HotkeySequenceRecorderOptions } from '@fregat/hotkeys'
-import type { UseHotkeyOptions } from './useHotkey'
-import type { UseHotkeySequenceOptions } from './useHotkeySequence'
+import type { UseHotkeyOptions } from './useHotkey.js'
+import type { UseHotkeySequenceOptions } from './useHotkeySequence.js'
 
 export interface HotkeysProviderOptions {
   hotkey?: Partial<UseHotkeyOptions>

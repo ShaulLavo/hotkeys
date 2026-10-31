@@ -9,31 +9,31 @@ bun install --frozen-lockfile
 bun run verify
 ```
 
-`verify` builds each package once through Turbo, checks types and typed README examples, lints, checks formatting, runs both Vitest suites, packs the built output, and installs it with npm and Bun into separate fresh consumers outside this workspace. That consumer checks Node imports, React server rendering, one shared core instance, and exported declarations. Temporary staging and consumer directories are removed in `finally` blocks.
+`verify` builds each package once through Turbo, checks types and typed README examples, lints, checks formatting, runs both Vitest suites, packs the built output, and installs it with npm and Bun into separate fresh consumers outside this workspace. That consumer checks Node imports, React provider server rendering, one shared core instance, and exported declarations. Temporary staging and consumer directories are removed in `finally` blocks.
 
-The Vitest and mocker patches in `patches/` travel with this repository. They are needed for the pinned test tools. The browser-playwright patch from Fregat is absent because these suites use happy-dom.
+The Vitest and mocker patches in `patches/` travel with this repository. They are needed for the pinned test tools. These suites use happy-dom.
 
 ## Install
 
 This repository contains two packages. Use the per-package release tarballs, which include JavaScript and declarations. A Git dependency on the repository root resolves the private workspace manifest.
 
-No standalone release has been published by this preparation PR. After the owner approves the switch, copy the full commit from a published release into `revision`:
+Choose a [published release](https://github.com/ShaulLavo/hotkeys/releases) and use its full commit in `revision`. This example installs [release 3de9d21](https://github.com/ShaulLavo/hotkeys/releases/tag/hotkeys-3de9d21e2299d2b94ed2d8b012c25bf9358dcfbd):
 
 ```sh
-revision='<full 40-character hotkeys commit from the published release>'
+revision='3de9d21e2299d2b94ed2d8b012c25bf9358dcfbd'
 base="https://github.com/ShaulLavo/hotkeys/releases/download/hotkeys-$revision"
 bun add "@fregat/hotkeys@$base/fregat-hotkeys-$revision.tgz"
 # For React apps, also supply react and react-dom 18 or newer:
 bun add "@fregat/react-hotkeys@$base/fregat-react-hotkeys-$revision.tgz"
 ```
 
-npm can install the same named URLs. Commit your lockfile. The React adapter declares the core as an exact-version peer, so the app supplies its core copy. Install both packages from the same full commit. Singapore, ghostty-webgpu and their consumers should select that same core URL so they share its registry. The install requires no source build, Git checkout, lifecycle scripts or npm publishing credentials.
+For npm, replace `bun add` with `npm install` using the same named URLs. Commit your lockfile. The React adapter declares the core as an exact-version peer, so the app supplies its core copy. Install both packages from the same full commit. Other packages in your app that depend on hotkeys should select that same core URL so they share its registry. The install requires no source build, Git checkout, lifecycle scripts or npm publishing credentials.
 
 ## Work on a local checkout
 
 Build this checkout with `bun run build`. In a consuming Bun project, temporarily replace its hotkeys dependency with `file:/absolute/path/to/hotkeys/packages/hotkeys`. If it uses the React adapter, also select `file:/absolute/path/to/hotkeys/packages/react-hotkeys`. For other linked packages that depend on hotkeys, temporarily select that same local core in their manifests and install their dependencies too. This also keeps the React adapter on the supplied core peer. Run `bun install` and rebuild hotkeys after edits. Keep these temporary manifest and lockfile changes uncommitted; restore the pinned release dependencies before the consumer PR.
 
-Consumers read the local package's existing `dist` exports. Source-aware dev servers may additionally map the linked checkout's source and watch it; the consuming app owns that configuration. Fregat's current source mapper needs a separate change to accept installed release packages before it switches over.
+Consumers read the local package's existing `dist` exports. Source-aware dev servers may additionally map the linked checkout's source and watch it; the consuming app owns that configuration.
 
 ## Prepare a release
 
@@ -51,6 +51,6 @@ The tag workflow calls the same CI job. It downloads those exact verified artifa
 
 ## Contribute
 
-Changes belong in this repository after the owner enables the standalone project. The preparation PR removes the automatic mirror-PR closer. Until that change reaches main, that old workflow can still close new PRs. Repository settings, mirror shutdown, and the Fregat switch remain owner actions.
+Open issues and pull requests in this repository.
 
 Keep READMEs short; put guides in `docs/`. Retain MIT attribution. Run the narrowest relevant checks while editing, then `bun run verify` before requesting review.

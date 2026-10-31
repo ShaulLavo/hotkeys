@@ -18,8 +18,13 @@ bun run verify
 ```ts
 import { getHotkeyRegistry } from '@fregat/hotkeys'
 
-const save = getHotkeyRegistry().register('Mod+S', () => console.log('Save requested'))
-save.unregister()
+function mountShortcuts(onSave: () => void): () => void {
+  const save = getHotkeyRegistry().register('Mod+S', onSave)
+  return () => save.unregister()
+}
+
+const cleanup = mountShortcuts(() => console.log('Save requested'))
+// Call cleanup() when the view unmounts.
 ```
 
 [Install release tarballs](docs/development.md#install) · [Concepts](packages/hotkeys/docs/concepts.md) · [API](packages/hotkeys/docs/api.md) · [React](packages/react-hotkeys/README.md) · [Development and releases](docs/development.md) · [Overview](docs/overview.md)

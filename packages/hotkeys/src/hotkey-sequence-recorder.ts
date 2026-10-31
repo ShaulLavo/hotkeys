@@ -1,14 +1,17 @@
 import { Store } from '@tanstack/store'
-import { findHotkeyConflicts } from './conflicts'
-import { beginRecording, captureRecordingEvent, endRecording } from './_recording-guard'
-import { chordRejection, hotkeyChordFromKeydown } from './_recorder-chord'
-import { keyInputFromKeyboardEvent } from './adapters/browser'
-import { isModifierKey, parseHotkey } from './parse'
-import { validateHotkey } from './validate'
-import { detectPlatform } from './platform'
-import { shouldIgnoreInputEvent } from './_event-target'
-import type { HotkeySequenceRecorderValidationContext, RecorderOptions } from './recorder-options'
-import type { Hotkey } from './hotkey.types'
+import { findHotkeyConflicts } from './conflicts.js'
+import { beginRecording, captureRecordingEvent, endRecording } from './_recording-guard.js'
+import { chordRejection, hotkeyChordFromKeydown } from './_recorder-chord.js'
+import { keyInputFromKeyboardEvent } from './adapters/browser.js'
+import { isModifierKey, parseHotkey } from './parse.js'
+import { validateHotkey } from './validate.js'
+import { detectPlatform } from './platform.js'
+import { shouldIgnoreInputEvent } from './_event-target.js'
+import type {
+  HotkeySequenceRecorderValidationContext,
+  RecorderOptions,
+} from './recorder-options.js'
+import type { Hotkey } from './hotkey.types.js'
 
 export type HotkeySequence = Array<Hotkey>
 
@@ -279,11 +282,11 @@ export class HotkeySequenceRecorder {
       return
     }
 
-    const sequence = [...steps]
+    const sequence = steps.slice()
     const platform = this.#options.platform ?? this.#platform
     this.#clearIdleTimer()
     const accepted = this.#options.validate?.(sequence, {
-      events: [...this.#events],
+      events: this.#events.slice(),
       parsedSequence: sequence.map((step) => parseHotkey(step, platform)),
     })
     if (accepted !== undefined && accepted !== true) {
@@ -346,18 +349,7 @@ export class HotkeySequenceRecorder {
 
   /** Stops, discards in-progress steps, and notifies onCancel. */
   cancel(): void {
-    endRecording(this)
-    this.#events = []
-    if (this.#keydownHandler) {
-      this.#removeListener(this.#keydownHandler)
-      this.#keydownHandler = null
-    }
-    this.#clearIdleTimer()
-    this.store.setState(() => ({
-      isRecording: false,
-      steps: [],
-      recordedSequence: null,
-    }))
+    this.stop()
     this.#options.onCancel?.()
   }
 
@@ -379,10 +371,5 @@ export class HotkeySequenceRecorder {
 
   destroy(): void {
     this.stop()
-    this.store.setState(() => ({
-      isRecording: false,
-      steps: [],
-      recordedSequence: null,
-    }))
   }
 }

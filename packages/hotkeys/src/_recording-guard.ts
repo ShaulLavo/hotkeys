@@ -1,4 +1,4 @@
-import { MODIFIER_KEYS, normalizeKeyName } from './constants'
+import { MODIFIER_KEYS, normalizeKeyName } from './constants.js'
 
 // Shared only by recorders and dispatchers. Does not own bindings or preferences.
 // Multiple recorder instances may be active; dispatch resumes after the last one ends.

@@ -1,4 +1,4 @@
-import type { ConflictBehavior, ParsedHotkey } from './hotkey.types'
+import type { ConflictBehavior, ParsedHotkey } from './hotkey.types.js'
 
 /**
  * Default options for hotkey/sequence registration.
@@ -43,7 +43,8 @@ export function handleConflict(
 
   if (conflictBehavior === 'warn') {
     console.warn(
-      `'${keyDisplay}' is already registered. Multiple handlers will be triggered. ` +
+      `'${keyDisplay}' is already registered. Existing registrations remain active. ` +
+        `For keydown, the newest matching handler runs first; returning false tries the next. ` +
         `Use conflictBehavior: 'replace' to replace the existing handler, ` +
         `or conflictBehavior: 'allow' to suppress this warning.`,
     )

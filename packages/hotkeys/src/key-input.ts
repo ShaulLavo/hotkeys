@@ -1,4 +1,4 @@
-import { normalizeKeyName } from './constants'
+import { normalizeKeyName } from './constants.js'
 
 /** Modifier state of one key press. `altGraph` marks Control+Alt synthesized by AltGr. */
 export interface KeyModifiers {

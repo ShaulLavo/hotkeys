@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import { formatHotkeySequence, getHotkeyRegistry } from '@fregat/hotkeys'
-import { useDefaultHotkeysOptions } from './HotkeysProvider'
-import { isRef } from './utils'
-import type { UseHotkeySequenceOptions } from './useHotkeySequence'
+import { useDefaultHotkeysOptions } from './HotkeysProvider.js'
+import { isRef } from './utils.js'
+import type { UseHotkeySequenceOptions } from './useHotkeySequence.js'
 import type { HotkeyCallback, HotkeySequence, HotkeyRegistrationHandle } from '@fregat/hotkeys'
 
 /**

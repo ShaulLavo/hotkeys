@@ -77,30 +77,35 @@ console.log('Packed core and React adapter load in Node with one core instance.'
   execFileSync(process.execPath, ['consumer.mjs'], { cwd: temporary, stdio: 'inherit' })
   await writeFile(
     join(temporary, 'consumer.ts'),
-    `import { parseHotkey } from '@fregat/hotkeys'
+    `import { createDispatcher, parseHotkey } from '@fregat/hotkeys'
 import { useHotkey } from '@fregat/react-hotkeys'
 parseHotkey('Mod+S', 'linux')
+createDispatcher({ platform: 'linux', keymap: [] })
 useHotkey('Mod+S', () => {})
 `,
   )
-  execFileSync(
-    process.execPath,
-    [
-      compiler,
-      '--noEmit',
-      '--strict',
-      '--skipLibCheck',
-      '--moduleResolution',
-      'bundler',
-      '--module',
-      'esnext',
-      '--target',
-      'es2023',
-      'consumer.ts',
-    ],
-    { cwd: temporary, stdio: 'inherit' },
-  )
-  console.log('Packed declarations resolve in a fresh consumer outside the workspace.')
+  for (const [resolution, module] of [
+    ['bundler', 'esnext'],
+    ['nodenext', 'nodenext'],
+  ]) {
+    execFileSync(
+      process.execPath,
+      [
+        compiler,
+        '--noEmit',
+        '--strict',
+        '--moduleResolution',
+        resolution,
+        '--module',
+        module,
+        '--target',
+        'es2023',
+        'consumer.ts',
+      ],
+      { cwd: temporary, stdio: 'inherit' },
+    )
+  }
+  console.log('Packed declarations resolve with Bundler and NodeNext outside the workspace.')
 } finally {
   await rm(temporary, { recursive: true, force: true })
 }

@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useState } from 'react'
 import { useSelector } from '@tanstack/react-store'
 import { HotkeyRecorder } from '@fregat/hotkeys'
-import { useDefaultHotkeysOptions } from './HotkeysProvider'
+import { useDefaultHotkeysOptions } from './HotkeysProvider.js'
 import type { Hotkey, HotkeyRecorderOptions } from '@fregat/hotkeys'
 
 export interface ReactHotkeyRecorder {

@@ -1,14 +1,14 @@
 import { Store } from '@tanstack/store'
-import { findHotkeyConflicts } from './conflicts'
-import { beginRecording, captureRecordingEvent, endRecording } from './_recording-guard'
-import { chordRejection, hotkeyChordFromKeydown } from './_recorder-chord'
-import { keyInputFromKeyboardEvent } from './adapters/browser'
-import { isModifierKey, parseHotkey } from './parse'
-import { validateHotkey } from './validate'
-import { detectPlatform } from './platform'
-import { shouldIgnoreInputEvent } from './_event-target'
-import type { HotkeyRecorderValidationContext, RecorderOptions } from './recorder-options'
-import type { Hotkey } from './hotkey.types'
+import { findHotkeyConflicts } from './conflicts.js'
+import { beginRecording, captureRecordingEvent, endRecording } from './_recording-guard.js'
+import { chordRejection, hotkeyChordFromKeydown } from './_recorder-chord.js'
+import { keyInputFromKeyboardEvent } from './adapters/browser.js'
+import { isModifierKey, parseHotkey } from './parse.js'
+import { validateHotkey } from './validate.js'
+import { detectPlatform } from './platform.js'
+import { shouldIgnoreInputEvent } from './_event-target.js'
+import type { HotkeyRecorderValidationContext, RecorderOptions } from './recorder-options.js'
+import type { Hotkey } from './hotkey.types.js'
 
 /**
  * State interface for the HotkeyRecorder.
@@ -269,20 +269,7 @@ export class HotkeyRecorder {
    * the onCancel callback if provided.
    */
   cancel(): void {
-    endRecording(this)
-    // Remove event listener immediately
-    if (this.#keydownHandler) {
-      this.#removeListener(this.#keydownHandler)
-      this.#keydownHandler = null
-    }
-
-    // Update store state
-    this.store.setState(() => ({
-      isRecording: false,
-      recordedHotkey: null,
-    }))
-
-    // Call cancel callback
+    this.stop()
     this.#options.onCancel?.()
   }
 
@@ -316,9 +303,5 @@ export class HotkeyRecorder {
    */
   destroy(): void {
     this.stop()
-    this.store.setState(() => ({
-      isRecording: false,
-      recordedHotkey: null,
-    }))
   }
 }

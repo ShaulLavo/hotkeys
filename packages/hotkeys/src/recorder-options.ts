@@ -1,5 +1,5 @@
-import type { Hotkey, ParsedHotkey } from './hotkey.types'
-import type { HotkeyConflict, HotkeyConflictOptions } from './conflicts'
+import type { Hotkey, ParsedHotkey } from './hotkey.types.js'
+import type { HotkeyConflict, HotkeyConflictOptions } from './conflicts.js'
 
 /** Event property used to record a binding. Physical codes are the default. */
 export type RecorderKeyMode = 'code' | 'key'

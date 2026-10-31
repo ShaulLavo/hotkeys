@@ -1,14 +1,14 @@
-import { createChordRuntime } from '../chords/runtime'
-import { detectPlatform } from '../platform'
-import { attachKeyListeners, browserKeyEffects } from './browser-listeners'
-import type { KeyInput } from '../key-input'
+import { createChordRuntime } from '../chords/runtime.js'
+import { detectPlatform } from '../platform.js'
+import { attachKeyListeners, browserKeyEffects } from './browser-listeners.js'
+import type { KeyInput } from '../key-input.js'
 import type {
   ChordOutcome,
   KeymapBinding,
   KeymapPlatform,
   KeymapSequenceEvent,
   PendingChordLabel,
-} from '../chords/types'
+} from '../chords/types.js'
 
 export type KeymapRuntimeOptions<Payload, Context> = {
   /** Idle keys are matched only inside this root; a pending chord listens document-wide. */

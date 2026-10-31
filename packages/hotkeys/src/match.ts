@@ -1,16 +1,16 @@
-import { matchKeyInput } from './_match'
-import { keyInputFromKeyboardEvent } from './adapters/browser'
-import { parseHotkey, parseRegisterableHotkey } from './parse'
-import { detectPlatform } from './platform'
-import { keysEqual } from './_keyboard-event'
+import { matchKeyInput } from './_match.js'
+import { keyInputFromKeyboardEvent } from './adapters/browser.js'
+import { parseHotkey, parseRegisterableHotkey } from './parse.js'
+import { detectPlatform } from './platform.js'
+import { keysEqual } from './_keyboard-event.js'
 import type {
   Hotkey,
   HotkeyCallback,
   HotkeyCallbackContext,
   ParsedHotkey,
   RegisterableHotkey,
-} from './hotkey.types'
-import type { KeyInput } from './key-input'
+} from './hotkey.types.js'
+import type { KeyInput } from './key-input.js'
 
 export interface KeyboardEventMatch {
   matched: boolean

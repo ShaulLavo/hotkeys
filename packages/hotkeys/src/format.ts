@@ -5,18 +5,18 @@ import {
   MAC_MODIFIER_SYMBOLS,
   PUNCTUATION_KEY_DISPLAY_LABELS,
   WINDOWS_MODIFIER_LABELS,
-} from './display-labels'
+} from './display-labels.js'
 import {
   MODIFIER_ALIASES,
   MODIFIER_ORDER,
   PUNCTUATION_CODE_MAP,
   normalizeKeyName,
-} from './constants'
-import { detectPlatform } from './platform'
-import { assertLogicalKey, splitHotkeyParts } from './_keyboard-event'
-import { isModifierKey, normalizeHotkeyFromParsed, normalizeRegisterableHotkey } from './parse'
-import type { CanonicalModifier } from './key.types'
-import type { Hotkey, ParsedHotkey, RegisterableHotkey } from './hotkey.types'
+} from './constants.js'
+import { detectPlatform } from './platform.js'
+import { assertLogicalKey, splitHotkeyParts } from './_keyboard-event.js'
+import { isModifierKey, normalizeHotkeyFromParsed, normalizeRegisterableHotkey } from './parse.js'
+import type { CanonicalModifier } from './key.types.js'
+import type { Hotkey, ParsedHotkey, RegisterableHotkey } from './hotkey.types.js'
 
 /**
  * Joins stored sequence steps with spaces, preserving physical code tokens.

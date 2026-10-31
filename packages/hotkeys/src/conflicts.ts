@@ -1,10 +1,10 @@
-import { detectPlatform } from './platform'
-import { parseRegisterableHotkey } from './parse'
-import { keysEqual } from './_keyboard-event'
-import { matchesKeyboardEvent } from './match'
-import { getHotkeyRegistry } from './hotkeys'
-import type { HotkeyRegistrationView, HotkeyRegistry } from './hotkeys'
-import type { ParsedHotkey, RegisterableHotkey } from './hotkey.types'
+import { detectPlatform } from './platform.js'
+import { parseRegisterableHotkey } from './parse.js'
+import { keysEqual } from './_keyboard-event.js'
+import { matchesKeyboardEvent } from './match.js'
+import { getHotkeyRegistry } from './hotkeys.js'
+import type { HotkeyRegistrationView, HotkeyRegistry } from './hotkeys.js'
+import type { ParsedHotkey, RegisterableHotkey } from './hotkey.types.js'
 
 export type HotkeyConflict = {
   type: 'hotkey' | 'sequence'

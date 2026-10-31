@@ -1,15 +1,15 @@
-import { detectPlatform } from './platform'
+import { detectPlatform } from './platform.js'
 import {
   codeToLogicalKey,
   isAsciiLetter,
   isLatinLetter,
   isPrintableKey,
   keysEqual,
-} from './_keyboard-event'
-import { parseHotkey } from './parse'
-import type { KeyboardEventMatch } from './match'
-import type { Hotkey, ParsedHotkey } from './hotkey.types'
-import type { KeyInput, KeyModifiers } from './key-input'
+} from './_keyboard-event.js'
+import { parseHotkey } from './parse.js'
+import type { KeyboardEventMatch } from './match.js'
+import type { Hotkey, ParsedHotkey } from './hotkey.types.js'
+import type { KeyInput, KeyModifiers } from './key-input.js'
 
 /** Matches a key input and reports the winning candidate and release identity. */
 export function matchKeyInput(

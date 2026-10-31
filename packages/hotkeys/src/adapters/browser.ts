@@ -1,8 +1,8 @@
-import { createKeyInput } from '../key-input'
-import { normalizeHotkeyFromKeyInput, parseKeyInput } from '../parse'
-import { detectPlatform } from '../platform'
-import type { Hotkey, ParsedHotkey } from '../hotkey.types'
-import type { KeyInput } from '../key-input'
+import { createKeyInput } from '../key-input.js'
+import { normalizeHotkeyFromKeyInput, parseKeyInput } from '../parse.js'
+import { detectPlatform } from '../platform.js'
+import type { Hotkey, ParsedHotkey } from '../hotkey.types.js'
+import type { KeyInput } from '../key-input.js'
 
 /** The fields of a DOM `KeyboardEvent` the adapter reads; structural so the core needs no DOM types. */
 export interface KeyboardEventLike {

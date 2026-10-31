@@ -1,7 +1,7 @@
-import { MODIFIER_KEYS, normalizeKeyName } from './constants'
-import { parseRegisterableHotkey } from './parse'
-import type { CanonicalModifier } from './key.types'
-import type { RegisterableHotkey } from './hotkey.types'
+import { MODIFIER_KEYS, normalizeKeyName } from './constants.js'
+import { parseRegisterableHotkey } from './parse.js'
+import type { CanonicalModifier } from './key.types.js'
+import type { RegisterableHotkey } from './hotkey.types.js'
 
 export interface HeldModifierOptions {
   /** Resolve Mod for this platform. Defaults to platform detection. */
