@@ -11,9 +11,9 @@ import type {
 
 export interface UseHotkeyOptions extends Omit<HotkeyOptions, 'target'> {
   /**
-   * The DOM element to attach the event listener to.
-   * Can be a React ref, direct DOM element, or null.
-   * Defaults to document.
+   * The scope checked by the document registry's delegated keyboard listeners.
+   * An element target includes its descendants. Accepts a React element ref,
+   * an element, document, window, or null. Defaults to document.
    */
   target?: React.RefObject<HTMLElement | null> | HTMLElement | Document | Window | null
 }
@@ -23,7 +23,7 @@ export interface UseHotkeyOptions extends Omit<HotkeyOptions, 'target'> {
  *
  * Registers with the document's hotkey registry, one trie lookup per key.
  * The callback receives both the keyboard event and a context object
- * containing the hotkey string and parsed hotkey.
+ * containing the normalized hotkey string and parsed stroke.
  *
  * This hook syncs the callback and options on every render to avoid
  * stale closures. This means
@@ -32,8 +32,9 @@ export interface UseHotkeyOptions extends Omit<HotkeyOptions, 'target'> {
  *
  * @param hotkey - The hotkey string (e.g., 'Mod+S', 'Escape') or RawHotkey object (supports `mod` for cross-platform)
  * @param callback - The function to call when the hotkey is pressed
- * @param options - Options for the hotkey behavior. `enabled: false` keeps the registration (visible in devtools)
- *   and only suppresses firing; the hook updates the existing handle instead of unregistering.
+ * @param options - Options for the hotkey behavior. `enabled: false` keeps the registration in the
+ *   registry's observable `registrations` store while suppressing keyboard-triggered callbacks.
+ *   The hook updates the existing handle instead of unregistering.
  *
  * @example
  * ```tsx
@@ -121,7 +122,7 @@ export function useHotkey(
       ? optionsRef.current.target.current
       : (optionsRef.current.target ?? (typeof document !== 'undefined' ? document : null))
 
-    // Skip if no valid target (SSR or ref still null)
+    // Wait until the target is available, for example when a ref is attached.
     if (!resolvedTarget) {
       if (registrationRef.current?.isActive) {
         registrationRef.current.unregister()

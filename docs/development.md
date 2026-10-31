@@ -9,7 +9,7 @@ bun install --frozen-lockfile
 bun run verify
 ```
 
-`verify` builds each package once through Turbo, checks types and typed README examples, lints, checks formatting, runs both Vitest suites, packs the built output, and installs it with npm and Bun into separate fresh consumers outside this workspace. That consumer checks Node imports, React provider server rendering, one shared core instance, and exported declarations. Temporary staging and consumer directories are removed in `finally` blocks.
+`verify` builds each package once through Turbo, checks types and typed documentation examples, lints, checks formatting, runs both Vitest suites, packs the built output, and installs it with npm and Bun into separate fresh consumers outside this workspace. That consumer checks Node imports, React provider server rendering, one shared core instance, exported declarations, and linked JavaScript source maps with embedded originals. Temporary staging and consumer directories are removed in `finally` blocks.
 
 The Vitest and mocker patches in `patches/` travel with this repository. They are needed for the pinned test tools. These suites use happy-dom.
 
@@ -34,6 +34,8 @@ For npm, replace `bun add` with `npm install` using the same named URLs. Commit 
 Build this checkout with `bun run build`. In a consuming Bun project, temporarily replace its hotkeys dependency with `file:/absolute/path/to/hotkeys/packages/hotkeys`. If it uses the React adapter, also select `file:/absolute/path/to/hotkeys/packages/react-hotkeys`. For other linked packages that depend on hotkeys, temporarily select that same local core in their manifests and install their dependencies too. This also keeps the React adapter on the supplied core peer. Run `bun install` and rebuild hotkeys after edits. Keep these temporary manifest and lockfile changes uncommitted; restore the pinned release dependencies before the consumer PR.
 
 Consumers read the local package's existing `dist` exports. Source-aware dev servers may additionally map the linked checkout's source and watch it; the consuming app owns that configuration.
+
+Each build also emits `dist/index.js.map`, linked from the JavaScript entry point, with its TypeScript and TSX source text embedded. `bun run pack` includes those maps so debuggers can use the original source without a repository checkout.
 
 ## Prepare a release
 

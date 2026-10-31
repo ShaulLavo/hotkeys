@@ -2,9 +2,9 @@ import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { createRequire } from 'node:module'
+import { createRequire, SourceMap } from 'node:module'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, isAbsolute, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
@@ -15,6 +15,70 @@ const reactFile = join(root, 'release', react.file)
 const require = createRequire(new URL('../package.json', import.meta.url))
 const compiler = join(dirname(require.resolve('typescript/package.json')), 'bin/tsc')
 const peers = JSON.parse(await readFile(join(root, 'packages/react-hotkeys/package.json'), 'utf8'))
+
+const sourceMapSamples = {
+  '@fregat/hotkeys': [['src/parse.ts', 'parseHotkey']],
+  '@fregat/react-hotkeys': [
+    ['src/useHotkey.ts', 'useHotkey'],
+    ['src/HotkeysProvider.tsx', 'HotkeysProvider'],
+  ],
+}
+
+function assertRelativePath(path, label) {
+  assert(
+    typeof path === 'string' &&
+      path.length > 0 &&
+      !isAbsolute(path) &&
+      !/^[a-z][a-z\d+.-]*:|\\/i.test(path),
+    `${label}: expected a portable relative path`,
+  )
+}
+
+async function checkSourceMap(directory, manifest) {
+  const entrypoint = join(directory, manifest.exports['.'].import)
+  const javascript = await readFile(entrypoint, 'utf8')
+  const reference = javascript.match(/\/\/# sourceMappingURL=(\S+)\s*$/)?.[1]
+  assert(reference, `${manifest.name}: missing linked JavaScript source map`)
+  assertRelativePath(reference, `${manifest.name} sourceMappingURL`)
+  const map = JSON.parse(await readFile(join(dirname(entrypoint), reference), 'utf8'))
+  assert.equal(map.version, 3)
+  assert(typeof map.mappings === 'string' && map.mappings.length > 0)
+  assert(Array.isArray(map.sources) && map.sources.length > 0)
+  assert(Array.isArray(map.sourcesContent))
+  assert.equal(map.sourcesContent.length, map.sources.length)
+  if (map.sourceRoot) assertRelativePath(map.sourceRoot, `${manifest.name} sourceRoot`)
+  for (const [index, source] of map.sources.entries()) {
+    assertRelativePath(source, `${manifest.name} source`)
+    assert(
+      typeof map.sourcesContent[index] === 'string' && map.sourcesContent[index].trim().length > 0,
+      `${manifest.name}: missing embedded source for ${source}`,
+    )
+  }
+
+  const decoded = new SourceMap(map)
+  for (const [source, functionName] of sourceMapSamples[manifest.name]) {
+    const sourceIndex = map.sources.findIndex(
+      (name) => name === source || name.endsWith(`/${source}`),
+    )
+    assert(sourceIndex >= 0, `${manifest.name}: missing source ${source}`)
+    const original = await readFile(
+      join(root, 'packages', manifest.name.slice('@fregat/'.length), source),
+      'utf8',
+    )
+    assert.equal(map.sourcesContent[sourceIndex], original)
+
+    const offset = javascript.indexOf(`function ${functionName}(`)
+    assert(offset >= 0, `${manifest.name}: missing generated function ${functionName}`)
+    const prefix = javascript.slice(0, offset + 'function '.length)
+    const line = prefix.split('\n').length - 1
+    const column = prefix.length - prefix.lastIndexOf('\n') - 1
+    const entry = decoded.findEntry(line, column)
+    assert.equal(entry.originalSource, map.sources[sourceIndex])
+    const originalLine = original.split('\n')[entry.originalLine]
+    assert(originalLine?.includes(`function ${functionName}(`))
+    assert(entry.originalColumn >= 0 && entry.originalColumn < originalLine.length)
+  }
+}
 
 const temporary = await mkdtemp(join(tmpdir(), 'hotkeys-consumer-'))
 
@@ -57,7 +121,9 @@ try {
     assert.equal(manifest.scripts, undefined)
     assert.equal(manifest.devDependencies, undefined)
     await readFile(join(temporary, 'node_modules', artifact.name, manifest.types))
+    await checkSourceMap(join(temporary, 'node_modules', artifact.name), manifest)
   }
+  console.log('Packed JavaScript source maps resolve to embedded TypeScript originals.')
   const consumer = `
 import assert from 'node:assert/strict'
 import { parseHotkey, getHotkeyRegistry } from '@fregat/hotkeys'

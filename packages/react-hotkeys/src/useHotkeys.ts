@@ -36,9 +36,9 @@ export interface UseHotkeyDefinition {
  *
  * @param hotkeys - Array of hotkey definitions to register
  * @param commonOptions - Shared options applied to all hotkeys (overridden by per-definition options).
- *   Per-row `enabled: false` still registers that hotkey: the registry suppresses execution only (the row
- *   stays in the store and appears in TanStack Hotkeys devtools). Toggling `enabled` updates the existing handle
- *   via `setOptions` (no unregister/re-register churn).
+ *   Per-row `enabled: false` keeps the row in the registry's observable `registrations` store while
+ *   suppressing keyboard-triggered callbacks. Toggling `enabled` updates the existing handle via
+ *   `setOptions` (no unregister/re-register churn).
  *
  * @example
  * ```tsx

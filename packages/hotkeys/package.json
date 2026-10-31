@@ -42,7 +42,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "bun build src/index.ts --outdir dist --target browser --format esm --packages external && tsc -p tsconfig.build.json",
+    "build": "bun build src/index.ts --outdir dist --target browser --format esm --sourcemap=linked --packages external && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint .",
     "format": "oxfmt --write .",

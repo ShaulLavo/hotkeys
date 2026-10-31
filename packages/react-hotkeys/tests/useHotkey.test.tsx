@@ -6,7 +6,7 @@ import { useHotkey } from '../src/useHotkey'
 import { useState, useRef } from 'react'
 
 describe('useHotkey', () => {
-  // Reset the HotkeyManager singleton between tests
+  // Dispose the document registry between tests.
   beforeEach(() => {
     getHotkeyRegistry().dispose()
   })
