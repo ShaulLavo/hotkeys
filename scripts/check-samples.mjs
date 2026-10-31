@@ -14,6 +14,7 @@ const entries = await readdir(packages, { withFileTypes: true })
 const documents = [
   { file: join(root, 'README.md'), directory: join(packages, 'hotkeys') },
   { file: join(root, 'docs/overview.md'), directory: join(packages, 'hotkeys') },
+  { file: join(root, 'docs/getting-started.md'), directory: join(packages, 'hotkeys') },
 ]
 for (const entry of entries.filter((item) => item.isDirectory())) {
   const directory = join(packages, entry.name)

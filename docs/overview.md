@@ -55,7 +55,7 @@ Within a stroke, `+` joins modifiers to a key: `Mod+S`. `Mod` means Command on m
 
 ## Build editor keymaps
 
-Use a dispatcher when a key's command depends on focus. The [runnable README example](../README.md#one-shortcut-two-commands) creates a workspace, textarea, and sidebar: `Mod+B` toggles the sidebar at workspace focus and toggles bold styling at editor focus.
+Use a dispatcher when a key's command depends on focus. The [runnable getting-started example](getting-started.md#one-shortcut-two-commands) creates a workspace, textarea, and sidebar: `Mod+B` toggles the sidebar at workspace focus and toggles bold styling at editor focus.
 
 `createBrowserDispatcher` attaches focus nodes to DOM elements. Each node carries a context and command handlers, and a parent connects it to the surrounding workspace. The dispatcher resolves the key against that focus path. Own the dispatcher for the view's lifetime and call `dispose()` during teardown. `createDispatcher` exposes the same engine for hosts that supply their own input and focus, including terminals.
 
