@@ -96,19 +96,20 @@ export class HotkeyRecorder {
   #platform: 'mac' | 'windows' | 'linux'
 
   constructor(options: HotkeyRecorderOptions) {
-    this.#options = options
+    this.#options = { ...options }
     this.#platform = detectPlatform()
   }
 
   /**
-   * Updates the recorder options, including callbacks.
-   * This allows framework adapters to sync callback changes without recreating the recorder.
+   * Patches options and callbacks, retaining omitted fields. Recording state is preserved.
    */
   setOptions(options: Partial<HotkeyRecorderOptions>): void {
-    this.#options = {
-      ...this.#options,
-      ...options,
-    }
+    this.replaceOptions({ ...this.#options, ...options })
+  }
+
+  /** Replaces the configuration, clearing omitted callbacks and restoring defaults. */
+  replaceOptions(options: HotkeyRecorderOptions): void {
+    this.#options = { ...options }
   }
 
   /**

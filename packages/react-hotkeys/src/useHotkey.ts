@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react'
-import { detectPlatform, getHotkeyRegistry, normalizeRegisterableHotkey } from '@fregat/hotkeys'
+import { getHotkeyRegistry } from '@fregat/hotkeys'
 import { useDefaultHotkeysOptions } from './HotkeysProvider.js'
-import { isRef, useIsomorphicLayoutEffect } from './utils.js'
+import { registrationIdentity, resolveTarget } from './_registration.js'
+import { useIsomorphicLayoutEffect } from './utils.js'
 import type {
   HotkeyCallback,
   HotkeyOptions,
@@ -13,7 +14,8 @@ export interface UseHotkeyOptions extends Omit<HotkeyOptions, 'target'> {
   /**
    * The scope checked by the document registry's delegated keyboard listeners.
    * An element target includes its descendants. Accepts a React element ref,
-   * an element, document, window, or null. Defaults to document.
+   * an element, document, window, or null. Defaults to document; targets must
+   * belong to that document.
    */
   target?: React.RefObject<HTMLElement | null> | HTMLElement | Document | Window | null
 }
@@ -94,29 +96,21 @@ export function useHotkey(
   // Refs to capture current values for use in effect without adding dependencies
   const callbackRef = useRef(callback)
   const optionsRef = useRef(mergedOptions)
+  const hotkeyRef = useRef(hotkey)
 
   // Refs are written after commit; the effects below read them.
   useIsomorphicLayoutEffect(() => {
     callbackRef.current = callback
     optionsRef.current = mergedOptions
+    hotkeyRef.current = hotkey
   })
 
-  // Track previous target and hotkey to detect changes requiring re-registration
-  const prevTargetRef = useRef<HTMLElement | Document | Window | null>(null)
-  const prevHotkeyRef = useRef<string | null>(null)
-
-  // Normalize to hotkey string
-  const platform = mergedOptions.platform ?? detectPlatform()
-  const hotkeyString = normalizeRegisterableHotkey(hotkey, platform)
-
-  // Extract options without target (target is handled separately)
-  const { target: _target, ...optionsWithoutTarget } = mergedOptions
+  // Only a different binding requires a new registration handle.
+  const registeredIdentityRef = useRef<string | null>(null)
 
   useEffect(() => {
     // Resolve target inside the effect so refs are already attached after mount
-    const resolvedTarget = isRef(optionsRef.current.target)
-      ? optionsRef.current.target.current
-      : (optionsRef.current.target ?? (typeof document !== 'undefined' ? document : null))
+    const resolvedTarget = resolveTarget(optionsRef.current.target)
 
     // Wait until the target is available, for example when a ref is attached.
     if (!resolvedTarget) {
@@ -124,33 +118,32 @@ export function useHotkey(
         registrationRef.current.unregister()
         registrationRef.current = null
       }
-      prevTargetRef.current = null
-      prevHotkeyRef.current = null
+      registeredIdentityRef.current = null
       return
     }
 
-    // Check if we need to re-register (target or hotkey changed)
-    const targetChanged = prevTargetRef.current !== null && prevTargetRef.current !== resolvedTarget
-    const hotkeyChanged = prevHotkeyRef.current !== null && prevHotkeyRef.current !== hotkeyString
+    const identity = registrationIdentity([hotkeyRef.current])
+    const hotkeyChanged =
+      registeredIdentityRef.current !== null && registeredIdentityRef.current !== identity
 
-    // If we have an active registration and target/hotkey changed, unregister first
-    if (registrationRef.current?.isActive && (targetChanged || hotkeyChanged)) {
+    if (registrationRef.current?.isActive && hotkeyChanged) {
       registrationRef.current.unregister()
       registrationRef.current = null
     }
 
-    // Register if needed (no active registration)
-    // Use refs to access current values without adding them to dependencies
-    if (!registrationRef.current || !registrationRef.current.isActive) {
-      registrationRef.current = getHotkeyRegistry().register(hotkeyString, callbackRef.current, {
-        ...optionsRef.current,
-        target: resolvedTarget,
-      })
+    const currentOptions = { ...optionsRef.current, target: resolvedTarget }
+    if (registrationRef.current?.isActive) {
+      registrationRef.current.callback = callbackRef.current
+      registrationRef.current.replaceOptions(currentOptions)
+    } else {
+      registrationRef.current = getHotkeyRegistry().register(
+        hotkeyRef.current,
+        callbackRef.current,
+        currentOptions,
+      )
     }
 
-    // Update tracking refs
-    prevTargetRef.current = resolvedTarget
-    prevHotkeyRef.current = hotkeyString
+    registeredIdentityRef.current = identity
   })
 
   useEffect(() => {
@@ -162,12 +155,4 @@ export function useHotkey(
       }
     }
   }, [])
-
-  // Publish option changes after commit, never during render.
-  useEffect(() => {
-    if (registrationRef.current?.isActive) {
-      registrationRef.current.callback = callback
-      registrationRef.current.setOptions(optionsWithoutTarget)
-    }
-  })
 }

@@ -1,10 +1,10 @@
 import { useEffect, useRef } from 'react'
-import { formatHotkeySequence, getHotkeyRegistry } from '@fregat/hotkeys'
+import { getHotkeyRegistry } from '@fregat/hotkeys'
 import { useDefaultHotkeysOptions } from './HotkeysProvider.js'
-import { isRef, useIsomorphicLayoutEffect } from './utils.js'
+import { registrationIdentity, resolveTarget } from './_registration.js'
+import { useIsomorphicLayoutEffect } from './utils.js'
 import type {
   HotkeyCallback,
-  HotkeyCallbackContext,
   HotkeySequence,
   HotkeyOptions,
   HotkeyRegistrationHandle,
@@ -14,7 +14,8 @@ export interface UseHotkeySequenceOptions extends Omit<HotkeyOptions, 'target'> 
   /**
    * The scope checked by the document registry's delegated keyboard listeners.
    * An element target includes its descendants. Accepts a React element ref,
-   * an element, document, window, or null. Defaults to document.
+   * an element, document, window, or null. Defaults to document; targets must
+   * belong to that document.
    */
   target?: React.RefObject<HTMLElement | null> | HTMLElement | Document | Window | null
 }
@@ -88,15 +89,8 @@ export function useHotkeySequence(
     sequenceRef.current = sequence
   })
 
-  // Track previous target and sequence to detect changes requiring re-registration
-  const prevTargetRef = useRef<HTMLElement | Document | Window | null>(null)
-  const prevSequenceRef = useRef<string | null>(null)
-
-  // Normalize to hotkey sequence string (join with spaces)
-  const hotkeySequenceString = formatHotkeySequence(sequence)
-
-  // Extract options without target (target is handled separately)
-  const { target: _target, ...optionsWithoutTarget } = mergedOptions
+  // Only a different binding requires a new registration handle.
+  const registeredIdentityRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (sequenceRef.current.length === 0) {
@@ -104,15 +98,12 @@ export function useHotkeySequence(
         registrationRef.current.unregister()
         registrationRef.current = null
       }
-      prevTargetRef.current = null
-      prevSequenceRef.current = null
+      registeredIdentityRef.current = null
       return
     }
 
     // Resolve target inside the effect so refs are already attached after mount
-    const resolvedTarget = isRef(optionsRef.current.target)
-      ? optionsRef.current.target.current
-      : (optionsRef.current.target ?? (typeof document !== 'undefined' ? document : null))
+    const resolvedTarget = resolveTarget(optionsRef.current.target)
 
     // Wait until the target is available, for example when a ref is attached.
     if (!resolvedTarget) {
@@ -120,37 +111,33 @@ export function useHotkeySequence(
         registrationRef.current.unregister()
         registrationRef.current = null
       }
-      prevTargetRef.current = null
-      prevSequenceRef.current = null
+      registeredIdentityRef.current = null
       return
     }
 
-    // Check if we need to re-register (target or sequence changed)
-    const targetChanged = prevTargetRef.current !== null && prevTargetRef.current !== resolvedTarget
+    const identity = registrationIdentity(sequenceRef.current)
     const sequenceChanged =
-      prevSequenceRef.current !== null && prevSequenceRef.current !== hotkeySequenceString
+      registeredIdentityRef.current !== null && registeredIdentityRef.current !== identity
 
-    // If we have an active registration and target/sequence changed, unregister first
-    if (registrationRef.current?.isActive && (targetChanged || sequenceChanged)) {
+    if (registrationRef.current?.isActive && sequenceChanged) {
       registrationRef.current.unregister()
       registrationRef.current = null
     }
 
-    // Register if needed (no active registration)
-    if (!registrationRef.current || !registrationRef.current.isActive) {
+    const currentOptions = { ...optionsRef.current, target: resolvedTarget }
+    const currentCallback: HotkeyCallback = (event, context) => callbackRef.current(event, context)
+    if (registrationRef.current?.isActive) {
+      registrationRef.current.callback = currentCallback
+      registrationRef.current.replaceOptions(currentOptions)
+    } else {
       registrationRef.current = getHotkeyRegistry().register(
         sequenceRef.current,
-        (event, context) => callbackRef.current(event, context),
-        {
-          ...optionsRef.current,
-          target: resolvedTarget,
-        },
+        currentCallback,
+        currentOptions,
       )
     }
 
-    // Update tracking refs
-    prevTargetRef.current = resolvedTarget
-    prevSequenceRef.current = hotkeySequenceString
+    registeredIdentityRef.current = identity
   })
 
   useEffect(() => {
@@ -162,13 +149,4 @@ export function useHotkeySequence(
       }
     }
   }, [])
-
-  // Publish option changes after commit, never during render.
-  useEffect(() => {
-    if (registrationRef.current?.isActive) {
-      registrationRef.current.callback = (event: KeyboardEvent, context: HotkeyCallbackContext) =>
-        callbackRef.current(event, context)
-      registrationRef.current.setOptions(optionsWithoutTarget)
-    }
-  })
 }
