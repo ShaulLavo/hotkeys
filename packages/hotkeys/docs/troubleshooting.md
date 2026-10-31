@@ -60,6 +60,8 @@ createBrowserDispatcher({
 
 an unmatched or declined prefix hands each unclaimed buffered key to `replay`, in order. in the browser, text fields get those characters back. in a terminal host you pass `replay` yourself and write the encoded keys to the shell. the current unclaimed event passes through normally, so the replay callback must not insert it a second time
 
+recovery stops if a callback cancels, disables, replaces the keymap, disposes the runtime or moves focus. check replayed `input` / `beforeinput` handlers too: they can trigger those changes after the first restored character. see [callbacks and nested input](keymaps.md#callbacks-and-nested-input) for the ownership rules
+
 ## the same shortcut warns about a conflict
 
 a second registration of the same keys on the same target logs a warning and keeps the existing registrations. for `keydown` (the default), the newest eligible handler runs first; returning `false` passes the key to the next handler. set `conflictBehavior` to `'replace'` to swap the old one, `'error'` to throw, or `'allow'` to silence the warning

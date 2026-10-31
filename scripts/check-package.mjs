@@ -212,6 +212,50 @@ try {
   chordDispatcher.dispose()
 }
 
+const nestedCalls = []
+const nestedReplay = []
+const nestedSequences = []
+const nestedDispatcher = createDispatcher({
+  platform: 'linux',
+  keymap: [
+    { keys: 'G H', command: 'outer' },
+    { keys: 'X Y', command: 'inner' },
+  ],
+  replay: input => nestedReplay.push(input.key),
+  onSequence: event => nestedSequences.push({
+    keys: event.keys,
+    outcome: event.outcome,
+    command: event.binding?.payload.command,
+  }),
+})
+const nestedPress = key => nestedDispatcher.handleKey(createKeyInput({ key }), null)
+nestedDispatcher.createNode({
+  commands: {
+    outer: () => {
+      nestedCalls.push('outer')
+      assert.equal(nestedPress('X'), true)
+    },
+    inner: () => void nestedCalls.push('inner'),
+  },
+}).focus()
+try {
+  assert.equal(nestedPress('G'), true)
+  assert.equal(nestedPress('H'), true)
+  assert.deepEqual(nestedCalls, ['outer'])
+  assert.deepEqual(nestedReplay, [], 'A successful outer chord must not replay its prefix')
+  assert.deepEqual(nestedDispatcher.pending(), { keys: 'X', candidateCount: 1 })
+  assert.equal(nestedPress('Y'), true)
+  assert.deepEqual(nestedCalls, ['outer', 'inner'])
+  assert.deepEqual(nestedReplay, [])
+  assert.equal(nestedDispatcher.pending(), null)
+  assert.deepEqual(nestedSequences, [
+    { keys: 'G', outcome: 'completed', command: 'outer' },
+    { keys: 'X', outcome: 'completed', command: 'inner' },
+  ])
+} finally {
+  nestedDispatcher.dispose()
+}
+
 assert.equal(typeof window, 'undefined')
 assert.equal(typeof document, 'undefined')
 
