@@ -9,9 +9,9 @@ bun install --frozen-lockfile
 bun run verify
 ```
 
-`verify` builds each package once through Turbo, checks types and typed documentation examples, lints, checks formatting, runs both Vitest suites, packs the built output, and installs it with npm and Bun into separate fresh consumers outside this workspace. That consumer checks Node imports, React provider server rendering, one shared core instance, exported declarations, and linked JavaScript source maps with embedded originals. Temporary staging and consumer directories are removed in `finally` blocks.
+`verify` builds each package once through Turbo, checks types and typed documentation examples, lints, checks formatting, runs both Vitest suites, packs the built output, and installs it with npm and Bun into separate fresh consumers outside this workspace. That consumer checks Node imports, server rendering of the React registration, observation, held-key, and recorder hooks without a DOM, one shared core instance, exported declarations, and linked JavaScript source maps with embedded originals. Temporary staging and consumer directories are removed in `finally` blocks.
 
-The Vitest and mocker patches in `patches/` travel with this repository. They are needed for the pinned test tools. These suites use happy-dom.
+The Vitest and mocker patches in `patches/` travel with this repository. They are needed for the pinned test tools. Browser suites use happy-dom; React server-rendering tests run in Node without browser globals. Hydration tests cover existing browser state, and lifecycle tests cover abandoned renders and Strict Mode cleanup.
 
 ## Install
 

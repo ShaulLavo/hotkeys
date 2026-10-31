@@ -1,5 +1,4 @@
-import { useSelector } from '@tanstack/react-store'
-import { getKeyStateTracker } from '@fregat/hotkeys'
+import { useKeyState } from './_use-key-state.js'
 
 /**
  * React hook that returns a map of currently held key names to their physical `event.code` values.
@@ -28,6 +27,5 @@ import { getKeyStateTracker } from '@fregat/hotkeys'
  * ```
  */
 export function useHeldKeyCodes(): Record<string, string> {
-  const tracker = getKeyStateTracker()
-  return useSelector(tracker.store, (state) => state.heldCodes)
+  return useKeyState((state) => state.heldCodes)
 }

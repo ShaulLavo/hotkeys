@@ -1,13 +1,11 @@
-import { useSelector } from '@tanstack/react-store'
-import { getKeyStateTracker } from '@fregat/hotkeys'
+import { useKeyState } from './_use-key-state.js'
 import type { IndividualKey } from '@fregat/hotkeys'
 
 /**
  * React hook that returns whether a specific key is currently being held.
  *
- * This hook uses `useSelector` from `@tanstack/react-store` to subscribe
- * to the global KeyStateTracker and uses a selector to determine if
- * the specified key is held.
+ * Subscribes to the global KeyStateTracker after commit and selects whether
+ * the specified key is held. Returns false during server rendering.
  *
  * @param key - The key to check (e.g., 'Shift', 'Control', 'A')
  * @returns True if the key is currently held down
@@ -43,10 +41,9 @@ import type { IndividualKey } from '@fregat/hotkeys'
  * ```
  */
 export function useKeyHold(key: IndividualKey): boolean {
-  const tracker = getKeyStateTracker()
   const normalizedKey = key.toLowerCase()
 
-  return useSelector(tracker.store, (state) =>
+  return useKeyState((state) =>
     state.heldKeys.some((heldKey) => heldKey.toLowerCase() === normalizedKey),
   )
 }

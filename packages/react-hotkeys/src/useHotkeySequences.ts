@@ -1,7 +1,7 @@
-import { useEffect, useLayoutEffect, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { formatHotkeySequence, getHotkeyRegistry } from '@fregat/hotkeys'
 import { useDefaultHotkeysOptions } from './HotkeysProvider.js'
-import { isRef } from './utils.js'
+import { isRef, useIsomorphicLayoutEffect } from './utils.js'
 import type { UseHotkeySequenceOptions } from './useHotkeySequence.js'
 import type { HotkeyCallback, HotkeySequence, HotkeyRegistrationHandle } from '@fregat/hotkeys'
 
@@ -74,24 +74,21 @@ export function useHotkeySequences(
   }
 
   const defaultOptions = useDefaultHotkeysOptions().hotkeySequence
-  const manager = getHotkeyRegistry()
 
   const registrationsRef = useRef<Map<string, RegistrationRecord>>(new Map())
   const definitionsRef = useRef(definitions)
   const sequenceStringsRef = useRef<Array<string>>([])
   const commonOptionsRef = useRef(commonOptions)
   const defaultOptionsRef = useRef(defaultOptions)
-  const managerRef = useRef(manager)
 
   const sequenceStrings = definitions.map((def) => formatHotkeySequence(def.sequence))
 
   // Refs are written after commit; the effects below read them.
-  useLayoutEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     definitionsRef.current = definitions
     sequenceStringsRef.current = sequenceStrings
     commonOptionsRef.current = commonOptions
     defaultOptionsRef.current = defaultOptions
-    managerRef.current = manager
   })
 
   useEffect(() => {
@@ -165,7 +162,7 @@ export function useHotkeySequences(
         existing.handle.unregister()
       }
 
-      const handle = managerRef.current.register(seq, def.callback, {
+      const handle = getHotkeyRegistry().register(seq, def.callback, {
         ...mergedOptions,
         target: resolvedTarget,
       })

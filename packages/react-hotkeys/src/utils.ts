@@ -1,4 +1,9 @@
+import { useEffect, useLayoutEffect } from 'react'
 import type React from 'react'
+
+// Preserve commit-time ref updates in the browser without React 18's SSR layout-effect warning.
+export const useIsomorphicLayoutEffect =
+  typeof document === 'undefined' ? useEffect : useLayoutEffect
 
 /**
  * Type guard to check if a value is a React ref-like object.

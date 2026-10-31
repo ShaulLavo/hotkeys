@@ -127,17 +127,67 @@ try {
   const consumer = `
 import assert from 'node:assert/strict'
 import { parseHotkey, getHotkeyRegistry } from '@fregat/hotkeys'
-import { getHotkeyRegistry as reactRegistry, HotkeysProvider } from '@fregat/react-hotkeys'
+import {
+  getHotkeyRegistry as reactRegistry,
+  HotkeysProvider,
+  useHeldKeyCodes,
+  useHeldKeys,
+  useHotkey,
+  useHotkeyHint,
+  useHotkeyRecorder,
+  useHotkeyRegistrations,
+  useHotkeys,
+  useHotkeySequence,
+  useHotkeySequenceRecorder,
+  useHotkeySequences,
+  useKeyHold,
+} from '@fregat/react-hotkeys'
 import { createElement } from 'react'
 import { renderToString } from 'react-dom/server'
 assert.equal(parseHotkey('Mod+S', 'linux').ctrl, true)
 assert.equal(parseHotkey('Mod+S', 'mac').meta, true)
 assert.equal(reactRegistry, getHotkeyRegistry)
-assert.equal(
-  renderToString(createElement(HotkeysProvider, null, createElement('button', null, 'Save'))),
-  '<button>Save</button>',
-)
-console.log('Packed core and React adapter load in Node with one core instance.')
+assert.equal(typeof window, 'undefined')
+assert.equal(typeof document, 'undefined')
+
+let callbackCount = 0
+const callback = () => {
+  callbackCount += 1
+}
+function ShortcutPreview() {
+  useHotkey('Mod+S', callback)
+  useHotkeys([{ hotkey: 'Escape', callback }])
+  useHotkeySequence(['G', 'G'], callback)
+  useHotkeySequences([{ sequence: ['D', 'D'], callback }])
+  const registrations = useHotkeyRegistrations()
+  const heldKeys = useHeldKeys()
+  const heldCodes = useHeldKeyCodes()
+  const shiftHeld = useKeyHold('Shift')
+  const hintVisible = useHotkeyHint('Mod+S', { platform: 'linux' })
+  const recorder = useHotkeyRecorder({ onRecord: callback })
+  const sequenceRecorder = useHotkeySequenceRecorder({ onRecord: callback })
+
+  assert.deepEqual(registrations, { hotkeys: [], sequences: [] })
+  assert.deepEqual(heldKeys, [])
+  assert.deepEqual(heldCodes, {})
+  assert.equal(shiftHeld, false)
+  assert.equal(hintVisible, false)
+  assert.equal(recorder.isRecording, false)
+  assert.equal(recorder.recordedHotkey, null)
+  assert.equal(sequenceRecorder.isRecording, false)
+  assert.deepEqual(sequenceRecorder.steps, [])
+  assert.equal(sequenceRecorder.recordedSequence, null)
+  return createElement('button', null, 'Save')
+}
+
+const app = createElement(HotkeysProvider, null, createElement(ShortcutPreview))
+const firstRender = renderToString(app)
+assert.equal(firstRender, '<button>Save</button>')
+assert.equal(renderToString(app), firstRender)
+assert.equal(callbackCount, 0)
+assert.equal(typeof window, 'undefined')
+assert.equal(typeof document, 'undefined')
+console.log('Packed React hooks server-render in Node without a DOM and share one core instance.')
 `
   await writeFile(join(temporary, 'consumer.mjs'), consumer)
   execFileSync(process.execPath, ['consumer.mjs'], { cwd: temporary, stdio: 'inherit' })

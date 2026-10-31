@@ -1,7 +1,10 @@
 import { useMemo } from 'react'
-import { useSelector } from '@tanstack/react-store'
 import { getHotkeyRegistry } from '@fregat/hotkeys'
+import { useBrowserStore } from './_use-browser-store.js'
 import type { HotkeyRegistrationView } from '@fregat/hotkeys'
+
+const EMPTY_REGISTRATIONS: ReadonlyMap<string, HotkeyRegistrationView> = new Map()
+const getRegistrationsStore = () => getHotkeyRegistry().registrations
 
 export interface HotkeyRegistrationsResult {
   /** Single-stroke registrations (public view, no callbacks) */
@@ -22,8 +25,11 @@ export interface HotkeyRegistrationsResult {
  * ```
  */
 export function useHotkeyRegistrations(): HotkeyRegistrationsResult {
-  const registry = getHotkeyRegistry()
-  const registrations = useSelector(registry.registrations)
+  const registrations = useBrowserStore(
+    getRegistrationsStore,
+    EMPTY_REGISTRATIONS,
+    (state) => state,
+  )
 
   return useMemo(() => {
     const hotkeys: Array<HotkeyRegistrationView> = []
