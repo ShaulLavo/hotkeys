@@ -97,6 +97,8 @@ ordinary nested input preserves outer candidate fallback and replay with their o
 
 `cancel`, disabling, keymap replacement, disposal and focus changes interrupt remaining fallback and replay. this also applies after the pending buffer has been detached: an input handler that disposes the dispatcher after the first replayed character prevents subsequent characters from being inserted. interrupted recovery reports its cancellation reason instead of a later ordinary timeout or mismatch; disposal suppresses that later report
 
+keyboard dispatch checks interruption between handlers for the same command too, including other handlers on the same node and its ancestors. fresh input captures its focus before selecting or consuming a binding, so a focus change cannot leave a new prefix pending under the old focus
+
 a handler that returns `true` keeps ownership of its input even if it synchronously cancels or disposes the runtime. a successful completion can still report `completed` after cancellation or a focus change, while disposal stops later sequence reports. cancellation alone does not claim a declined fresh single-key shortcut. `releaseAll()` or a nested release of the same key clears held-key ownership even when a handler is still running
 
 keymap replacement is committed before its cancellation notifications run. nested input from those notifications sees the replacement map. pending notifications describe the latest state; an older notification cannot overwrite a newer pending label

@@ -125,10 +125,11 @@ type Pending<Payload, Source> = {
   readonly focus: unknown
   readonly timed: boolean
 }
-type Operation<Payload, Source> = {
-  readonly parent: Operation<Payload, Source> | null
+type FocusSnapshot = { readonly focus: unknown }
+type Operation = {
+  readonly parent: Operation | null
   readonly key: string | null
-  sequence: Pending<Payload, Source> | null
+  focusSnapshot: FocusSnapshot | null
   pendingRevision: number
   cancellation: ChordOutcome | null
   released: boolean
@@ -144,7 +145,7 @@ export function createChordRuntime<Payload, Context, Source>(
   let trie = buildKeymapTrie(options.bindings, platform)
   let enabled = options.enabled !== false
   let disposed = false
-  let activeOperation: Operation<Payload, Source> | null = null
+  let activeOperation: Operation | null = null
   let pending: Pending<Payload, Source> | null = null
   let pendingRevision = 0
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -157,7 +158,7 @@ export function createChordRuntime<Payload, Context, Source>(
     activeOperation = {
       parent,
       key,
-      sequence: pending,
+      focusSnapshot: pending,
       pendingRevision,
       cancellation: null,
       released: false,
@@ -171,12 +172,17 @@ export function createChordRuntime<Payload, Context, Source>(
   function canContinue(): boolean {
     const operation = activeOperation
     if (disposed || operation?.cancellation) return false
-    const moved = operation?.sequence && focusMoved(operation.sequence)
+    const moved = operation?.focusSnapshot && focusMoved(operation.focusSnapshot)
     // The focus reader can itself trigger teardown.
     return !moved && !disposed && !operation?.cancellation
   }
   function ownsPending(): boolean {
     return canContinue() && activeOperation?.pendingRevision === pendingRevision
+  }
+  function rememberFocus() {
+    const operation = activeOperation!
+    if (operation.focusSnapshot || !options.currentFocus) return
+    operation.focusSnapshot = { focus: options.currentFocus() }
   }
   function changedPending(): number {
     pendingRevision += 1
@@ -286,8 +292,17 @@ export function createChordRuntime<Payload, Context, Source>(
     if (next.timed) timer = setTimeout(timeout, timeoutMs)
     const revision = changedPending()
     syncCapture()
-    if (revision === pendingRevision)
-      options.onPendingChange?.({ keys: next.keys, candidateCount: next.count })
+    if (!retainPending(next, revision)) return
+    options.onPendingChange?.({ keys: next.keys, candidateCount: next.count })
+    retainPending(next, revision)
+  }
+  function retainPending(next: Pending<Payload, Source>, revision: number): boolean {
+    if (pending !== next || revision !== pendingRevision) return false
+    const moved = focusMoved(next)
+    if (pending !== next || revision !== pendingRevision) return false
+    if (!moved) return true
+    cancel('superseded')
+    return false
   }
   function typesText({ input, source }: Buffered<Source>) {
     const { ctrl, meta } = input.modifiers
@@ -309,7 +324,7 @@ export function createChordRuntime<Payload, Context, Source>(
     const ended = endPending()
     reportOperation(ended, 'timeout', flush(ended.buffer))
   }
-  function focusMoved(sequence: Pending<Payload, Source>) {
+  function focusMoved(sequence: FocusSnapshot) {
     return options.currentFocus !== undefined && options.currentFocus() !== sequence.focus
   }
   /** Zed's `flush_dispatch`: replays prefixes until no buffered key is left. Returns the first claim. */
@@ -415,7 +430,7 @@ export function createChordRuntime<Payload, Context, Source>(
     if (sequence && focusMoved(sequence)) {
       if (pending !== sequence) return null
       const ended = endPending()
-      activeOperation!.sequence = null
+      activeOperation!.focusSnapshot = null
       reportOperation(ended, 'superseded', null)
     }
     if (!ownsPending()) return null
@@ -425,6 +440,8 @@ export function createChordRuntime<Payload, Context, Source>(
     }
     const edge = trieStep(trie, input)
     if (!edge) return null
+    rememberFocus()
+    if (!ownsPending()) return null
     const context = options.captureContext(source)
     const selection = select(edge.node, context, source)
     if (!ownsPending()) return null

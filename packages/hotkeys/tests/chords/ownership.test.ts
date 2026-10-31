@@ -28,6 +28,116 @@ const ambiguous: readonly KeymapBinding<string>[] = [
   { chord: ['G', 'H', 'I'], payload: 'longer' },
 ]
 
+test.each(['acceptsTextInput', 'swallow'] as const)(
+  'a focus change from %s cannot arm a fresh prefix under the old focus',
+  (callback) => {
+    let focus = 'original'
+    const moveFocus = () => {
+      focus = 'replacement'
+    }
+    const h = setup(chords, {
+      currentFocus: () => focus,
+      acceptsTextInput: () => {
+        if (callback === 'acceptsTextInput') moveFocus()
+        return false
+      },
+      effects: {
+        preventDefault: () => {},
+        stopPropagation: () => {},
+        swallow: () => {
+          if (callback === 'swallow') moveFocus()
+        },
+      },
+    })
+
+    expect(h.press('g')).toBe(callback === 'swallow')
+    expect(h.runtime.pending()).toBeNull()
+    expect(h.visiblePending()).toBeNull()
+    expect(h.calls).toEqual([])
+    expect(h.replay).not.toHaveBeenCalled()
+  },
+)
+
+test('a focus change in a declining fresh single stops later binding candidates', () => {
+  let focus = 'original'
+  const h = setup(
+    [
+      { chord: ['G'], payload: 'first' },
+      { chord: ['G'], payload: 'stale' },
+    ],
+    {
+      currentFocus: () => focus,
+      dispatch: () => {
+        focus = 'replacement'
+        return false
+      },
+    },
+  )
+
+  expect(h.press('g')).toBe(false)
+  expect(h.calls).toEqual(['first'])
+  expect(h.runtime.pending()).toBeNull()
+})
+
+test('a chord started under new focus survives an interrupted fresh prefix', () => {
+  let focus = 'original'
+  let reentered = false
+  const h = setup(chords, {
+    currentFocus: () => focus,
+    effects: {
+      preventDefault: () => {},
+      stopPropagation: () => {},
+      swallow: () => {
+        if (reentered) return
+        reentered = true
+        focus = 'replacement'
+        expect(h.press('x')).toBe(true)
+      },
+    },
+  })
+
+  expect(h.press('g')).toBe(true)
+  expect(h.runtime.pending()).toEqual({ keys: 'X', candidateCount: 1 })
+  expect(h.visiblePending()).toEqual(h.runtime.pending())
+  expect(h.replay).not.toHaveBeenCalled()
+  expect(h.press('y')).toBe(true)
+  expect(h.calls).toEqual(['nested'])
+  expect(h.runtime.pending()).toBeNull()
+})
+
+const pendingFocusChanges = (['capture', 'pending'] as const).flatMap((notification) =>
+  [false, true].map((nested) => ({ notification, nested })),
+)
+
+test.each(pendingFocusChanges)(
+  '$notification focus changes retire only the old prefix, nested=$nested',
+  ({ notification, nested }) => {
+    let focus = 'original'
+    let reentered = false
+    const changeFocus = () => {
+      if (reentered || h.runtime.pending()?.keys !== 'G') return
+      reentered = true
+      focus = 'replacement'
+      if (nested) expect(h.press('x')).toBe(true)
+    }
+    const h = setup(chords, {
+      currentFocus: () => focus,
+      ...(notification === 'capture'
+        ? { onCaptureChange: changeFocus }
+        : { onPendingChange: changeFocus }),
+    })
+
+    expect(h.press('g')).toBe(true)
+    const expected = nested ? { keys: 'X', candidateCount: 1 } : null
+    expect(h.runtime.pending()).toEqual(expected)
+    expect(h.visiblePending()).toEqual(expected)
+    expect(h.replay).not.toHaveBeenCalled()
+    if (!nested) return
+    expect(h.press('y')).toBe(true)
+    expect(h.calls).toEqual(['nested'])
+  },
+)
+
 function setup(bindings: readonly KeymapBinding<string>[] = chords, hooks: Hooks = {}) {
   const calls: string[] = []
   const events: KeymapSequenceEvent<string>[] = []

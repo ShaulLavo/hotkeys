@@ -43,6 +43,66 @@ function summarize(events: readonly KeymapSequenceEvent<CompiledBinding>[]) {
   }))
 }
 
+const handlerInterruptions = (['cancel', 'setKeymap', 'focus'] as const).flatMap((action) =>
+  (['same node', 'ancestor'] as const).flatMap((scope) =>
+    (['single', 'completion', 'timeout', 'mismatch'] as const).map((route) => ({
+      action,
+      scope,
+      route,
+    })),
+  ),
+)
+
+test('the host focus reader can derive its token from the public context stack', () => {
+  const command = vi.fn()
+  dispatcher = createDispatcher<Source>({
+    platform: 'linux',
+    keymap: [{ keys: 'G', command: 'action' }],
+    currentFocus: () => dispatcher!.contextStack().length,
+  })
+  dispatcher.createNode({ context: 'Editor', commands: { action: command } }).focus()
+
+  expect(dispatcher.contextStack()).toHaveLength(1)
+  expect(send(stroke('g'))).toBe(true)
+  expect(command).toHaveBeenCalledOnce()
+})
+
+test.each(handlerInterruptions)(
+  '$action during $route stops later handlers for the same command on the $scope',
+  ({ action, scope, route }) => {
+    vi.useFakeTimers()
+    const calls: string[] = []
+    const keys = route === 'single' ? 'G' : 'G H'
+    const keymap = [{ keys, command: 'action' }]
+    if (route === 'timeout' || route === 'mismatch')
+      keymap.push({ keys: 'G H I', command: 'longer' })
+    dispatcher = createDispatcher<Source>({ platform: 'linux', timeoutMs: 25, keymap })
+    const destination = dispatcher.createNode()
+    const stale = () => void calls.push('stale')
+    const interrupt = () => {
+      calls.push('interrupt')
+      if (action === 'cancel') dispatcher!.cancel()
+      else if (action === 'setKeymap') dispatcher!.setKeymap([])
+      else destination.focus()
+      return false
+    }
+    const parent = dispatcher.createNode({
+      commands: scope === 'ancestor' ? { action: stale } : {},
+    })
+    const child = dispatcher.createNode({ parent, commands: { action: interrupt } })
+    if (scope === 'same node') child.handle('action', stale)
+    child.focus()
+
+    send(stroke('g'))
+    if (route !== 'single') send(stroke('h'))
+    if (route === 'timeout') vi.advanceTimersByTime(25)
+    if (route === 'mismatch') send(stroke('q'))
+
+    expect(calls).toEqual(['interrupt'])
+    expect(dispatcher.pending()).toBeNull()
+  },
+)
+
 test('a successful command can start a new chord without replaying or completing it', () => {
   const replay = vi.fn()
   const sequences: KeymapSequenceEvent<CompiledBinding>[] = []
