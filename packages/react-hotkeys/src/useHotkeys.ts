@@ -1,7 +1,7 @@
-import { useEffect, useLayoutEffect, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { detectPlatform, getHotkeyRegistry, normalizeRegisterableHotkey } from '@fregat/hotkeys'
 import { useDefaultHotkeysOptions } from './HotkeysProvider.js'
-import { isRef } from './utils.js'
+import { isRef, useIsomorphicLayoutEffect } from './utils.js'
 import type { UseHotkeyOptions } from './useHotkey.js'
 import type {
   Hotkey,
@@ -76,7 +76,6 @@ export function useHotkeys(
   }
 
   const defaultOptions = useDefaultHotkeysOptions().hotkey
-  const manager = getHotkeyRegistry()
   const platform = commonOptions.platform ?? defaultOptions?.platform ?? detectPlatform()
 
   const registrationsRef = useRef<Map<string, RegistrationRecord>>(new Map())
@@ -84,19 +83,17 @@ export function useHotkeys(
   const hotkeyStringsRef = useRef<Array<Hotkey>>([])
   const commonOptionsRef = useRef(commonOptions)
   const defaultOptionsRef = useRef(defaultOptions)
-  const managerRef = useRef(manager)
 
   const hotkeyStrings = hotkeys.map((def) =>
     normalizeRegisterableHotkey(def.hotkey, def.options?.platform ?? platform),
   )
 
   // Refs are written after commit; the effects below read them.
-  useLayoutEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     hotkeysRef.current = hotkeys
     hotkeyStringsRef.current = hotkeyStrings
     commonOptionsRef.current = commonOptions
     defaultOptionsRef.current = defaultOptions
-    managerRef.current = manager
   })
 
   useEffect(() => {
@@ -163,7 +160,7 @@ export function useHotkeys(
         existing.handle.unregister()
       }
 
-      const handle = managerRef.current.register(hotkeyStr, def.callback, {
+      const handle = getHotkeyRegistry().register(hotkeyStr, def.callback, {
         ...mergedOptions,
         target: resolvedTarget,
       })

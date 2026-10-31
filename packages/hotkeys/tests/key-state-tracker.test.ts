@@ -1,6 +1,8 @@
 /// <reference lib="dom" />
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createHotkeyRegistry } from '../src/hotkeys'
 import { KeyStateTracker } from '../src/key-state-tracker'
+import type { HotkeyRegistry } from '../src/hotkeys'
 
 /**
  * Helper to create and dispatch a KeyboardEvent
@@ -10,6 +12,7 @@ function dispatchKey(type: 'keydown' | 'keyup', key: string, code?: string): Key
     key,
     code: code ?? key,
     bubbles: true,
+    cancelable: true,
   })
   document.dispatchEvent(event)
   return event
@@ -300,5 +303,91 @@ describe('KeyStateTracker resets', () => {
     vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
     document.dispatchEvent(new Event('visibilitychange'))
     expect(tracker.getHeldKeys()).toEqual([])
+  })
+})
+
+describe('KeyStateTracker with shortcut dispatch', () => {
+  let registry: HotkeyRegistry | undefined
+
+  beforeEach(() => {
+    KeyStateTracker.resetInstance()
+  })
+
+  afterEach(() => {
+    registry?.dispose()
+    registry = undefined
+    KeyStateTracker.resetInstance()
+  })
+
+  it.each(['before', 'after'] as const)(
+    'tracks consumed releases when the registry is created %s the tracker',
+    (order) => {
+      if (order === 'before') registry = createHotkeyRegistry()
+      const tracker = KeyStateTracker.getInstance()
+      registry ??= createHotkeyRegistry()
+      const callback = vi.fn()
+      registry.register('F9', callback)
+
+      dispatchKey('keydown', 'F9')
+      expect(callback).toHaveBeenCalledOnce()
+      expect(tracker.store.state).toEqual({ heldKeys: ['F9'], heldCodes: { F9: 'F9' } })
+
+      const release = dispatchKey('keyup', 'F9')
+      expect(release.defaultPrevented).toBe(true)
+      expect(tracker.store.state).toEqual({ heldKeys: [], heldCodes: {} })
+    },
+  )
+
+  it('observes a consumed continuation when tracking starts during a pending chord', () => {
+    registry = createHotkeyRegistry()
+    const callback = vi.fn()
+    registry.register(['F9', 'F10'], callback)
+    dispatchKey('keydown', 'F9')
+
+    const tracker = KeyStateTracker.getInstance()
+    const continuation = dispatchKey('keydown', 'F10')
+    expect(continuation.defaultPrevented).toBe(true)
+    expect(callback).toHaveBeenCalledOnce()
+    expect(tracker.store.state).toEqual({ heldKeys: ['F10'], heldCodes: { F10: 'F10' } })
+
+    const release = dispatchKey('keyup', 'F10')
+    expect(release.defaultPrevented).toBe(true)
+    expect(tracker.store.state).toEqual({ heldKeys: [], heldCodes: {} })
+  })
+
+  it('destroying the tracker removes its keyboard listeners while registrations keep working', () => {
+    registry = createHotkeyRegistry()
+    const callback = vi.fn()
+    registry.register('F9', callback)
+    const tracker = KeyStateTracker.getInstance()
+    const changed = vi.fn()
+    const subscription = tracker.store.subscribe(changed)
+
+    tracker.destroy()
+    changed.mockClear()
+    dispatchKey('keydown', 'F9')
+    dispatchKey('keyup', 'F9')
+    dispatchKey('keydown', 'a', 'KeyA')
+    dispatchKey('keyup', 'a', 'KeyA')
+
+    expect(callback).toHaveBeenCalledOnce()
+    expect(changed).not.toHaveBeenCalled()
+    expect(tracker.store.state).toEqual({ heldKeys: [], heldCodes: {} })
+    subscription.unsubscribe()
+  })
+
+  it('disposing the registry leaves the tracker observing held keys and releases', () => {
+    registry = createHotkeyRegistry()
+    registry.register('F9', () => {})
+    const tracker = KeyStateTracker.getInstance()
+    dispatchKey('keydown', 'F9')
+
+    registry.dispose()
+    registry = undefined
+    expect(tracker.store.state).toEqual({ heldKeys: ['F9'], heldCodes: { F9: 'F9' } })
+
+    const release = dispatchKey('keyup', 'F9')
+    expect(release.defaultPrevented).toBe(false)
+    expect(tracker.store.state).toEqual({ heldKeys: [], heldCodes: {} })
   })
 })

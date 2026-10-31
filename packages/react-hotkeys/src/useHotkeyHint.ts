@@ -1,5 +1,5 @@
-import { useSelector } from '@tanstack/react-store'
-import { getKeyStateTracker, matchesHeldModifiers } from '@fregat/hotkeys'
+import { matchesHeldModifiers } from '@fregat/hotkeys'
+import { useKeyState } from './_use-key-state.js'
 import type { HeldModifierOptions, RegisterableHotkey } from '@fregat/hotkeys'
 
 /**
@@ -13,7 +13,5 @@ export function useHotkeyHint(
   hotkey: RegisterableHotkey,
   options: HeldModifierOptions = {},
 ): boolean {
-  return useSelector(getKeyStateTracker().store, (state) =>
-    matchesHeldModifiers(hotkey, state.heldKeys, options),
-  )
+  return useKeyState((state) => matchesHeldModifiers(hotkey, state.heldKeys, options))
 }

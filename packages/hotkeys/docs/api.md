@@ -82,3 +82,13 @@ useHotkey('Mod+S', save, { target: editorRef })
 ```
 
 `HotkeysProvider` takes `defaultOptions` with the keys `hotkey`, `hotkeySequence`, `hotkeyRecorder`, and `hotkeySequenceRecorder`. each holds defaults for the matching hook. the react hooks use the registry, so they do not have focus contexts. for those, use `registry.dispatcher` or a dispatcher from `@fregat/hotkeys`
+
+### server rendering
+
+the React hooks can render on a server without `window` or `document`. rendering does not create the browser registry, held-key tracker, or DOM listeners. the four registration hooks acquire the shared document registry in their effects after commit, once element refs are attached. unmounting removes their registrations; Strict Mode's effect replay leaves one live registration per binding
+
+`useHotkeyRegistrations` returns empty `hotkeys` and `sequences` arrays on the server and during initial hydration. `useHeldKeys`, `useHeldKeyCodes`, `useKeyHold`, and `useHotkeyHint` also start with no keys held. after commit, these hooks subscribe to the live browser stores and catch up with existing state, including registrations created outside React. unmounting removes each hook's store subscription and preserves the shared registry and tracker for other consumers
+
+the recorder hooks start idle on the server. call their recording actions from browser event handlers or effects. in frameworks with React Server Components, put hook-using code in a client component; that component can still render HTML on the server
+
+platform-dependent labels need the same explicit `platform` on the server and the initial client render, for example `formatForDisplay('Mod+S', { platform: 'mac' })`. automatic platform detection can differ between Node and the browser; the empty hook snapshots do not control formatting helpers called by your component

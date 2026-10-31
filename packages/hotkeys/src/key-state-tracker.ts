@@ -149,8 +149,9 @@ export class KeyStateTracker {
       if (document.visibilityState === 'hidden') this.reset()
     }
 
-    document.addEventListener('keydown', this.#keydownListener, true)
-    document.addEventListener('keyup', this.#keyupListener, true)
+    // Observe keys before document dispatchers can consume a chord or its release.
+    window.addEventListener('keydown', this.#keydownListener, true)
+    window.addEventListener('keyup', this.#keyupListener, true)
     window.addEventListener('blur', this.#blurListener)
     document.addEventListener('visibilitychange', this.#visibilityListener)
   }
@@ -187,12 +188,12 @@ export class KeyStateTracker {
     }
 
     if (this.#keydownListener) {
-      document.removeEventListener('keydown', this.#keydownListener, true)
+      window.removeEventListener('keydown', this.#keydownListener, true)
       this.#keydownListener = null
     }
 
     if (this.#keyupListener) {
-      document.removeEventListener('keyup', this.#keyupListener, true)
+      window.removeEventListener('keyup', this.#keyupListener, true)
       this.#keyupListener = null
     }
 
