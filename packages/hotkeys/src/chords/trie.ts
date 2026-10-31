@@ -1,9 +1,8 @@
 import { LETTER_KEYS, NUMBER_KEYS, PUNCTUATION_CODE_MAP } from '../constants.js'
+import { allowsCodeFallback, allowsImplicitShift } from '../_keyboard-event.js'
 import { normalizeRegisterableHotkey, parseHotkey, rawHotkeyToParsedHotkey } from '../parse.js'
 import type { KeyInput } from '../key-input.js'
 import type { KeymapBinding, KeymapPlatform } from './types.js'
-
-const LATIN_LETTER_PATTERN = /^[a-z]$/i
 
 export type KeymapNode<Payload> = {
   readonly next: ReadonlyMap<string, readonly (KeymapEdge<Payload> | undefined)[]>
@@ -56,8 +55,8 @@ function insertBinding<Payload>(
 }
 
 /**
- * One `Map.get` plus an index for a printed key; then a physical binding on the code; then, on
- * non-Latin layouts, the printed binding at that position.
+ * Tries exact printed and physical bindings before implicit Shift on a printed glyph, then
+ * a compatible positional fallback. Physical and positional matches keep the exact modifiers.
  */
 export function trieStep<Payload>(
   node: KeymapNode<Payload>,
@@ -66,12 +65,14 @@ export function trieStep<Payload>(
   const { alt, ctrl, meta, shift, altGraph } = input.modifiers
   // AltGr synthesizes Control+Alt to type a glyph; the glyph is the stroke.
   const modifiers = modifierMask(alt && !altGraph, ctrl && !altGraph, meta, shift)
+  const printed = node.next.get(input.key)
   const edge =
-    node.next.get(input.key)?.[modifiers] ??
+    printed?.[modifiers] ??
     (input.code ? node.next.get(physicalSlot(input.code))?.[modifiers] : undefined)
   if (edge) return edge
-  // A Latin layout owns its printed letters; AZERTY Z must not activate physical W.
-  if (LATIN_LETTER_PATTERN.test(input.key)) return null
+  const implicit = shift ? printed?.[modifiers & ~8] : undefined
+  if (implicit && allowsImplicitShift(input.key)) return implicit
+  if (!allowsCodeFallback(input.key, input.code, alt)) return null
   const physical = PHYSICAL_KEY_NAMES.get(input.code)
   if (!physical) return null
   return node.next.get(physical)?.[modifiers] ?? null

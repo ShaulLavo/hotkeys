@@ -30,6 +30,11 @@ export function isPrintableKey(key: string): boolean {
   return key !== '' && Array.from(key).length === 1
 }
 
+/** Shift may produce a printed glyph without being part of its logical shortcut. Letters stay exact. */
+export function allowsImplicitShift(key: string): boolean {
+  return isPrintableKey(key) && !/^\p{Letter}$/u.test(key)
+}
+
 /** Splits modifier tokens while retaining a trailing literal plus: `Control++` → `['Control', '+']`. */
 export function splitHotkeyParts(hotkey: string): Array<string> {
   if (!hotkey.endsWith('+')) return hotkey.split('+')
@@ -47,6 +52,14 @@ export function isAsciiLetter(key: string): boolean {
 /** Identifies a single Latin-script character, including accented letters. */
 export function isLatinLetter(key: string): boolean {
   return /^\p{Script_Extensions=Latin}$/u.test(key)
+}
+
+/**
+ * Layout-produced Latin letters own their Key* positions. Alt retains the compatibility fallback
+ * for glyphs transformed by Option; ASCII letters always keep their printed meaning.
+ */
+export function allowsCodeFallback(key: string, code: string, alt: boolean): boolean {
+  return !isAsciiLetter(key) && (!isLatinLetter(key) || !code.startsWith('Key') || alt)
 }
 
 /** Compares letters without case, preserving accents and avoiding expansions such as ß → SS. */

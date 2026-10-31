@@ -1,8 +1,8 @@
 import { detectPlatform } from './platform.js'
 import {
+  allowsCodeFallback,
+  allowsImplicitShift,
   codeToLogicalKey,
-  isAsciiLetter,
-  isLatinLetter,
   isPrintableKey,
   keysEqual,
 } from './_keyboard-event.js'
@@ -29,22 +29,13 @@ export function matchKeyInput(
   }
 
   const direct = keysEqual(input.key, parsed.key)
-  const implicitShift =
-    direct && isPrintableKey(input.key) && !/^\p{Letter}$/u.test(input.key) && !parsed.shift
+  const implicitShift = direct && allowsImplicitShift(input.key) && !parsed.shift
 
   if (direct && modifiersMatch(input.modifiers, parsed, implicitShift)) {
     return matched('key', implicitShift ? 2 : 3)
   }
 
-  // ASCII alphabetic output is authoritative for Dvorak/Colemak/AZERTY.
-  // Native Latin letters are also authoritative on Key* positions; Alt is the
-  // exception because macOS Option commonly transforms a shortcut's glyph.
-  if (
-    isAsciiLetter(input.key) ||
-    (isLatinLetter(input.key) && input.code.startsWith('Key') && !input.modifiers.alt)
-  ) {
-    return noMatch
-  }
+  if (!allowsCodeFallback(input.key, input.code, input.modifiers.alt)) return noMatch
 
   if (!modifiersMatch(input.modifiers, parsed, false)) return noMatch
   const fallbackKey = codeToLogicalKey(input.code)

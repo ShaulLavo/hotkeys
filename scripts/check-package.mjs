@@ -126,7 +126,7 @@ try {
   console.log('Packed JavaScript source maps resolve to embedded TypeScript originals.')
   const consumer = `
 import assert from 'node:assert/strict'
-import { createDispatcher, createKeyInput, parseHotkey, getHotkeyRegistry } from '@fregat/hotkeys'
+import { createDispatcher, createKeyInput, matchesKeyInput, parseHotkey, getHotkeyRegistry } from '@fregat/hotkeys'
 import {
   getHotkeyRegistry as reactRegistry,
   HotkeysProvider,
@@ -147,6 +147,35 @@ import { renderToString } from 'react-dom/server'
 assert.equal(parseHotkey('Mod+S', 'linux').ctrl, true)
 assert.equal(parseHotkey('Mod+S', 'mac').meta, true)
 assert.equal(reactRegistry, getHotkeyRegistry)
+
+for (const [glyph, code] of [['?', 'Slash'], ['+', 'Equal']]) {
+  const input = createKeyInput({ key: glyph, code, modifiers: { shift: true } })
+  assert.equal(matchesKeyInput(input, glyph, 'linux'), true)
+  const calls = []
+  const dispatcher = createDispatcher({
+    platform: 'linux',
+    keymap: [
+      { keys: glyph, command: 'single' },
+      { keys: ['G', glyph], command: 'chord' },
+    ],
+  })
+  dispatcher.createNode({
+    commands: {
+      single: () => void calls.push('single'),
+      chord: () => void calls.push('chord'),
+    },
+  }).focus()
+  try {
+    assert.equal(dispatcher.handleKey(input, null), true, 'Shift+' + code + ' must dispatch ' + glyph)
+    assert.equal(dispatcher.handleKey(createKeyInput({ key: 'G' }), null), true)
+    assert.equal(dispatcher.pending()?.keys, 'G')
+    assert.equal(dispatcher.handleKey(input, null), true)
+    assert.deepEqual(calls, ['single', 'chord'])
+    assert.equal(dispatcher.pending(), null)
+  } finally {
+    dispatcher.dispose()
+  }
+}
 
 const chordLog = []
 const chordDispatcher = createDispatcher({

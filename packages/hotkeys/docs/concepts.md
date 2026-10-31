@@ -42,6 +42,16 @@ when several bindings match a key, the dispatcher picks by deepest matching cont
 
 a handler that returns `false` declines: the command goes to the next ancestor, and then the key goes to the next candidate binding. when nothing takes the key, it goes on to the browser's default handling
 
+## printed keys and physical keys
+
+logical bindings follow the printed character. `?` matches a `?` whether or not the layout needs Shift to produce it; `Control++` likewise matches Control with a printed `+`. this applies to non-letter glyphs consisting of one Unicode code point, including digits, at any position in a chord. letters and named keys keep exact Shift matching: `A` does not match Shift+A, and `Enter` does not match Shift+Enter. `Shift+?` explicitly requires Shift
+
+physical bindings use bracketed codes such as `[Slash]` and `Control+[KeyE]`. their modifiers are always exact: Shift+Slash requires `Shift+[Slash]`, even when its printed character is `?`. the input and recorded shortcut keep their actual modifiers; implicit Shift only changes logical matching
+
+the dispatcher tries an exact printed-key match, then an exact physical-code match, then a printed-glyph match allowing implicit Shift, and finally a compatible positional fallback with the original modifiers. exact `Shift+?` and `Shift+[Slash]` therefore take priority over a permissive `?` binding
+
+layout-produced Latin letters keep their printed meaning on letter-key positions, including accents: Control with `é` on `KeyE` does not activate logical `Control+E`. use `Control+[KeyE]` for that position. the existing Alt compatibility fallback for transformed glyphs remains available; non-Latin layouts and dead keys can also use positional fallback
+
 ## chords
 
 strokes separated by spaces, like `Mod+K Mod+C`, are chords. the dispatcher keeps a trie of every bound sequence and holds a pending chord while a longer binding is still reachable
