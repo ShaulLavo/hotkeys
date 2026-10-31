@@ -13,8 +13,6 @@ bun install --frozen-lockfile
 bun run verify
 ```
 
-## Use
-
 ```ts
 import { getHotkeyRegistry } from '@fregat/hotkeys'
 
@@ -27,6 +25,6 @@ const cleanup = mountShortcuts(() => console.log('Save requested'))
 // Call cleanup() when the view unmounts.
 ```
 
-[Install release tarballs](docs/development.md#install) · [Concepts](packages/hotkeys/docs/concepts.md) · [API](packages/hotkeys/docs/api.md) · [React](packages/react-hotkeys/README.md) · [Development and releases](docs/development.md) · [Overview](docs/overview.md)
+[Install release tarballs](docs/development.md#install) · [Get started](docs/getting-started.md) · [Concepts](packages/hotkeys/docs/concepts.md) · [API](packages/hotkeys/docs/api.md) · [React](packages/react-hotkeys/README.md) · [Development and releases](docs/development.md) · [Overview](docs/overview.md)
 
 [MIT](LICENSE). Forked from [TanStack Hotkeys](https://github.com/TanStack/hotkeys), with Tanner Linsley's copyright retained.
