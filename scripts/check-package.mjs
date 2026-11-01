@@ -98,6 +98,7 @@ try {
         react: peers.devDependencies.react,
         'react-dom': peers.devDependencies['react-dom'],
         '@types/react': peers.devDependencies['@types/react'],
+        'happy-dom': peers.devDependencies['happy-dom'],
       },
     }),
   )
@@ -319,6 +320,11 @@ for (const Recorder of [HotkeyRecorder, HotkeySequenceRecorder]) {
 `
   await writeFile(join(temporary, 'consumer.mjs'), consumer)
   execFileSync(process.execPath, ['consumer.mjs'], { cwd: temporary, stdio: 'inherit' })
+  await writeFile(
+    join(temporary, 'batch-consumer.mjs'),
+    await readFile(join(root, 'scripts/fixtures/batch-consumer.mjs')),
+  )
+  execFileSync(process.execPath, ['batch-consumer.mjs'], { cwd: temporary, stdio: 'inherit' })
   await writeFile(
     join(temporary, 'consumer.ts'),
     `import { createDispatcher, createHotkeyRegistry, formatHotkeySequence, HotkeyRecorder, HotkeySequenceRecorder, parseHotkey } from '@fregat/hotkeys'

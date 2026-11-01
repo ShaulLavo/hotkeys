@@ -238,9 +238,19 @@ export function createHotkeyRegistry(
       hasFired: false,
       triggerCount: 0,
     }
-    entries.set(id, entry)
-    entry.release = root.handle(id, ({ source }) => (source ? run(entry, source) : false))
-    publish()
+    try {
+      entries.set(id, entry)
+      entry.release = root.handle(id, ({ source }) => (source ? run(entry, source) : false))
+      publish()
+    } catch (error) {
+      removeEntry(id)
+      try {
+        publish()
+      } catch {
+        // Preserve the acquisition error if a cleanup observer also throws.
+      }
+      throw error
+    }
     return {
       id,
       get callback() {

@@ -1,10 +1,7 @@
-import { useEffect, useRef } from 'react'
-import { getHotkeyRegistry } from '@fregat/hotkeys'
 import { useDefaultHotkeysOptions } from './HotkeysProvider.js'
-import { registrationIdentity, resolveTarget } from './_registration.js'
-import { useIsomorphicLayoutEffect } from './utils.js'
+import { useBatchRegistrations } from './_batch-registration.js'
 import type { UseHotkeySequenceOptions } from './useHotkeySequence.js'
-import type { HotkeyCallback, HotkeySequence, HotkeyRegistrationHandle } from '@fregat/hotkeys'
+import type { HotkeyCallback, HotkeySequence } from '@fregat/hotkeys'
 
 /**
  * A single sequence definition for use with `useHotkeySequences`.
@@ -70,96 +67,13 @@ export function useHotkeySequences(
   commonOptions: UseHotkeySequenceOptions = {},
 ): void {
   const defaultOptions = useDefaultHotkeysOptions().hotkeySequence
-
-  const registrationsRef = useRef<Map<string, HotkeyRegistrationHandle>>(new Map())
-  const definitionsRef = useRef(definitions)
-  const commonOptionsRef = useRef(commonOptions)
-  const defaultOptionsRef = useRef(defaultOptions)
-
-  // Refs are written after commit; the effects below read them.
-  useIsomorphicLayoutEffect(() => {
-    definitionsRef.current = definitions
-    commonOptionsRef.current = commonOptions
-    defaultOptionsRef.current = defaultOptions
-  })
-
-  useEffect(() => {
-    const prevRegistrations = registrationsRef.current
-    const nextRegistrations = new Map<string, HotkeyRegistrationHandle>()
-
-    const rows: Array<{
-      registrationKey: string
-      def: (typeof definitionsRef.current)[number]
-      seq: Readonly<HotkeySequence>
-      mergedOptions: UseHotkeySequenceOptions
-      resolvedTarget: Document | HTMLElement | Window
-    }> = []
-
-    for (let i = 0; i < definitionsRef.current.length; i++) {
-      const def = definitionsRef.current[i]!
-      const seq = def.sequence
-      if (seq.length === 0) {
-        continue
-      }
-
-      const mergedOptions = {
-        ...defaultOptionsRef.current,
-        ...commonOptionsRef.current,
-        ...def.options,
-      }
-
-      const resolvedTarget = resolveTarget(mergedOptions.target)
-
-      if (!resolvedTarget) {
-        continue
-      }
-
-      const registrationKey = `${i}:${registrationIdentity(seq)}`
-      rows.push({
-        registrationKey,
-        def,
-        seq,
-        mergedOptions,
-        resolvedTarget,
-      })
-    }
-
-    const nextKeys = new Set(rows.map((r) => r.registrationKey))
-
-    for (const [key, handle] of prevRegistrations) {
-      if (!nextKeys.has(key) && handle.isActive) {
-        handle.unregister()
-      }
-    }
-
-    for (const row of rows) {
-      const { registrationKey, def, seq, mergedOptions, resolvedTarget } = row
-
-      const existing = prevRegistrations.get(registrationKey)
-      const currentOptions = { ...mergedOptions, target: resolvedTarget }
-      if (existing?.isActive) {
-        // Publish callback/options only after commit, never during render.
-        existing.callback = def.callback
-        existing.replaceOptions(currentOptions)
-        nextRegistrations.set(registrationKey, existing)
-        continue
-      }
-
-      const handle = getHotkeyRegistry().register(seq, def.callback, currentOptions)
-      nextRegistrations.set(registrationKey, handle)
-    }
-
-    registrationsRef.current = nextRegistrations
-  })
-
-  useEffect(() => {
-    return () => {
-      for (const handle of registrationsRef.current.values()) {
-        if (handle.isActive) {
-          handle.unregister()
-        }
-      }
-      registrationsRef.current = new Map()
-    }
-  }, [])
+  useBatchRegistrations(
+    definitions.map((definition) => ({
+      keys: definition.sequence,
+      callback: definition.callback,
+      options: definition.options,
+    })),
+    commonOptions,
+    defaultOptions,
+  )
 }
