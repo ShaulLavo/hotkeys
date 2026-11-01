@@ -1,6 +1,7 @@
 // Copied into each fresh package consumer so all imports resolve to installed artifacts.
 import assert from 'node:assert/strict'
 import { Window } from 'happy-dom'
+import type { ReactNode } from 'react'
 
 const browserWindow = new Window()
 Object.assign(globalThis, {
@@ -25,12 +26,15 @@ const { createRoot } = await import('react-dom/client')
 const { getHotkeyRegistry } = await import('@fregat/hotkeys')
 const { useHotkeys, useHotkeySequences } = await import('@fregat/react-hotkeys')
 
-class Boundary extends Component {
+class Boundary extends Component<
+  { children?: ReactNode; onError: (error: unknown) => void },
+  { failed: boolean }
+> {
   state = { failed: false }
   static getDerivedStateFromError() {
     return { failed: true }
   }
-  componentDidCatch(error) {
+  componentDidCatch(error: Error) {
     this.props.onError(error)
   }
   render() {
@@ -38,7 +42,7 @@ class Boundary extends Component {
   }
 }
 
-function press(key, code) {
+function press(key: string, code: string): void {
   for (const type of ['keydown', 'keyup']) {
     document.dispatchEvent(new KeyboardEvent(type, { key, code, bubbles: true, cancelable: true }))
   }
@@ -77,65 +81,68 @@ try {
   press('a', 'KeyA')
   assert.equal(failedCalls, 0)
 
-  for (const sequence of [false, true]) {
-    const errors = []
-    function BrokenBatch() {
-      useHotkeys(
-        sequence
-          ? []
-          : [
-              { hotkey: 'A', callback: failedCallback },
-              { hotkey: 'A', callback: failedCallback, options: { conflictBehavior: 'error' } },
-            ],
-      )
-      useHotkeySequences(
-        sequence
-          ? [
-              { sequence: ['G', 'H'], callback: failedCallback },
-              {
-                sequence: ['G', 'H'],
-                callback: failedCallback,
-                options: { conflictBehavior: 'error' },
-              },
-            ]
-          : [],
-      )
-      return null
-    }
-    const container = document.createElement('div')
-    document.body.append(container)
-    const root = createRoot(container, { onCaughtError: () => {} })
-    try {
-      await act(() =>
-        root.render(
-          createElement(
-            Boundary,
-            {
-              onError: (error) => errors.push(error),
-            },
-            createElement(BrokenBatch),
-          ),
-        ),
-      )
-      assert.equal(errors.length, 1)
-      assert.match(errors[0].message, /already registered/)
-      assert.equal(container.textContent, 'Failed batch')
-      assert.deepEqual(Array.from(registry.registrations.state.keys()), [outside.id])
-      await act(() => {
-        press('a', 'KeyA')
-        press('g', 'KeyG')
-        press('h', 'KeyH')
-        press('F8', 'F8')
-      })
-      assert.equal(failedCalls, 0)
-      assert.equal(outsideCalls, sequence ? 2 : 1)
-    } finally {
-      await act(() => root.unmount())
-      container.remove()
-    }
-  }
+  for (const sequence of [false, true]) await checkFailedBatch(sequence)
   console.log('Packed batch failures release owned shortcuts and preserve unrelated registrations.')
 } finally {
   registry.dispose()
   browserWindow.close()
+}
+
+async function checkFailedBatch(sequence: boolean): Promise<void> {
+  const errors: unknown[] = []
+  function BrokenBatch() {
+    useHotkeys(
+      sequence
+        ? []
+        : [
+            { hotkey: 'A', callback: failedCallback },
+            { hotkey: 'A', callback: failedCallback, options: { conflictBehavior: 'error' } },
+          ],
+    )
+    useHotkeySequences(
+      sequence
+        ? [
+            { sequence: ['G', 'H'], callback: failedCallback },
+            {
+              sequence: ['G', 'H'],
+              callback: failedCallback,
+              options: { conflictBehavior: 'error' },
+            },
+          ]
+        : [],
+    )
+    return null
+  }
+  const container = document.createElement('div')
+  document.body.append(container)
+  const root = createRoot(container, { onCaughtError: () => {} })
+  try {
+    await act(() =>
+      root.render(
+        createElement(
+          Boundary,
+          {
+            onError: (error: unknown) => errors.push(error),
+          },
+          createElement(BrokenBatch),
+        ),
+      ),
+    )
+    assert.equal(errors.length, 1)
+    assert(errors[0] instanceof Error)
+    assert.match(errors[0].message, /already registered/)
+    assert.equal(container.textContent, 'Failed batch')
+    assert.deepEqual(Array.from(registry.registrations.state.keys()), [outside.id])
+    await act(() => {
+      press('a', 'KeyA')
+      press('g', 'KeyG')
+      press('h', 'KeyH')
+      press('F8', 'F8')
+    })
+    assert.equal(failedCalls, 0)
+    assert.equal(outsideCalls, sequence ? 2 : 1)
+  } finally {
+    await act(() => root.unmount())
+    container.remove()
+  }
 }

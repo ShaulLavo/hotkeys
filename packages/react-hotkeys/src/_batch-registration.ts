@@ -61,6 +61,31 @@ function releaseRegistrations(registrations: Map<string, HotkeyRegistrationHandl
   if (failure) throw failure.error
 }
 
+function reconcileRegistrations(
+  registrations: Map<string, HotkeyRegistrationHandle>,
+  rows: readonly RegistrationRow[],
+): void {
+  const nextKeys = new Set(rows.map((row) => row.registrationKey))
+  for (const [key, handle] of registrations) {
+    if (nextKeys.has(key)) continue
+    if (handle.isActive) handle.unregister()
+    registrations.delete(key)
+  }
+
+  for (const row of rows) {
+    const existing = registrations.get(row.registrationKey)
+    if (existing?.isActive) {
+      existing.callback = row.callback
+      existing.replaceOptions(row.options)
+      continue
+    }
+
+    const handle = getHotkeyRegistry().register(row.keys, row.callback, row.options)
+    // Own each returned handle immediately, even if a later row fails.
+    registrations.set(row.registrationKey, handle)
+  }
+}
+
 export function useBatchRegistrations(
   definitions: readonly BatchDefinition[],
   commonOptions: UseHotkeyOptions,
@@ -92,25 +117,7 @@ export function useBatchRegistrations(
         commonOptionsRef.current,
         defaultOptionsRef.current,
       )
-      const nextKeys = new Set(rows.map((row) => row.registrationKey))
-      for (const [key, handle] of registrations) {
-        if (nextKeys.has(key)) continue
-        if (handle.isActive) handle.unregister()
-        registrations.delete(key)
-      }
-
-      for (const row of rows) {
-        const existing = registrations.get(row.registrationKey)
-        if (existing?.isActive) {
-          existing.callback = row.callback
-          existing.replaceOptions(row.options)
-          continue
-        }
-
-        const handle = getHotkeyRegistry().register(row.keys, row.callback, row.options)
-        // Own each returned handle immediately, even if a later row fails.
-        registrations.set(row.registrationKey, handle)
-      }
+      reconcileRegistrations(registrations, rows)
     } catch (error) {
       // Fail closed for this hook. Earlier 'replace' removals outside the batch
       // remain applied; this cleanup is not a registry transaction.
