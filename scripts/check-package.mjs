@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { createRequire, SourceMap } from 'node:module'
+import { createRequire, SourceMap, stripTypeScriptTypes } from 'node:module'
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -98,6 +98,8 @@ try {
         react: peers.devDependencies.react,
         'react-dom': peers.devDependencies['react-dom'],
         '@types/react': peers.devDependencies['@types/react'],
+        '@types/react-dom': peers.devDependencies['@types/react-dom'],
+        'happy-dom': peers.devDependencies['happy-dom'],
       },
     }),
   )
@@ -319,6 +321,10 @@ for (const Recorder of [HotkeyRecorder, HotkeySequenceRecorder]) {
 `
   await writeFile(join(temporary, 'consumer.mjs'), consumer)
   execFileSync(process.execPath, ['consumer.mjs'], { cwd: temporary, stdio: 'inherit' })
+  const batchConsumer = await readFile(join(root, 'scripts/fixtures/batch-consumer.ts'), 'utf8')
+  await writeFile(join(temporary, 'batch-consumer.ts'), batchConsumer)
+  await writeFile(join(temporary, 'batch-consumer.mjs'), stripTypeScriptTypes(batchConsumer))
+  execFileSync(process.execPath, ['batch-consumer.mjs'], { cwd: temporary, stdio: 'inherit' })
   await writeFile(
     join(temporary, 'consumer.ts'),
     `import { createDispatcher, createHotkeyRegistry, formatHotkeySequence, HotkeyRecorder, HotkeySequenceRecorder, parseHotkey } from '@fregat/hotkeys'
@@ -380,6 +386,7 @@ recordedSequence.push('Escape')
         '--target',
         'es2023',
         'consumer.ts',
+        'batch-consumer.ts',
       ],
       { cwd: temporary, stdio: 'inherit' },
     )

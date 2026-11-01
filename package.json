@@ -14,7 +14,7 @@
     "build": "turbo run build --filter='@fregat/*'",
     "typecheck": "turbo run typecheck --filter='@fregat/*' && bun run docs:check",
     "docs:check": "bun scripts/check-samples.mjs",
-    "lint": "oxlint .",
+    "lint": "bun scripts/check-source-language.ts && oxlint .",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
     "test": "turbo run test --filter='@fregat/*'",

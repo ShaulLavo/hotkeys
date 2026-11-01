@@ -56,3 +56,7 @@ The tag workflow calls the same CI job. It downloads those exact verified artifa
 Open issues and pull requests in this repository.
 
 Keep READMEs short; put guides in `docs/`. Retain MIT attribution. Run the narrowest relevant checks while editing, then `bun run verify` before requesting review.
+
+## Script language
+
+New handwritten scripts and fixtures use TypeScript. `bun run lint` rejects JavaScript files outside the three existing runner paths. Those runners remain a conversion task: move `scripts/check-package.mjs`, `scripts/check-samples.mjs`, and `scripts/pack.mjs` to TypeScript, typecheck them, and remove each corresponding exception from `scripts/check-source-language.ts`. Temporary JavaScript emitted for package-consumer tests is generated from TypeScript and stays outside the repository.

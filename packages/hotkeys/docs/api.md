@@ -16,6 +16,8 @@ every export of `@fregat/hotkeys`, grouped by job. the source of truth is [`src/
 
 registration options: `conflictBehavior` (`'warn'` by default), `enabled`, `eventType`, `ignoreInputs`, `platform`, `preventDefault`, `requireReset`, `stopPropagation`, `target`, `meta`
 
+if publishing a new registration to store subscribers throws, `register` removes that call's entry and command handler before rethrowing the original error. other registrations, including ones created independently by a subscriber, remain owned by their callers. a prior `conflictBehavior: 'replace'` removal is not reversed
+
 ### update a registration
 
 `handle.setOptions(patch)` merges the supplied fields into the current configuration. omitted fields keep their previous values. `handle.replaceOptions(options)` replaces that configuration, so omitted fields return to their defaults. explicitly setting a field to `undefined` also restores its default. `ignoreInputs` is computed from the registered shortcut when no override remains: Control/Meta combinations and Escape work inside inputs; bare keys and Shift/Alt combinations are ignored there
@@ -102,6 +104,14 @@ registration and recorder hooks replace their option configuration after each co
 target and platform updates preserve an existing registration's handle and trigger count. a ref with no attached element removes the registration until a later committed render supplies a target; an omitted or `null` target uses the document. changing the shortcut or sequence itself creates a new registration. batch rows still use their list position and shortcut as identity, so insertion/reordering can replace handles
 
 equivalent string and raw bindings, key aliases, and letter case preserve registration identity and priority. symbolic `Mod` remains distinct from literal Control or Meta because it resolves differently across platforms
+
+### failed batch updates
+
+`useHotkeys` and `useHotkeySequences` plan the current rows before changing live registrations. if planning or applying a row fails, the hook releases all registrations it owns, including handles retained from the previous render and handles created earlier in the failed update. the original error reaches React's error boundary; the failed batch leaves no active shortcuts behind. recovering by remounting the component starts a fresh batch
+
+this is scoped cleanup, not an atomic registry transaction. rows are applied in order, and store subscribers can observe those updates. an earlier `conflictBehavior: 'replace'` may already have removed a registration owned elsewhere; cleanup does not restore it. other unrelated registrations stay active, and the previous version of the failed batch is not restored
+
+cleanup attempts every owned handle even if an unregister notification throws. during a failed update, cleanup errors do not replace the original error. ordinary unmount cleanup reports its first error after attempting all releases. empty sequences and unattached refs continue to skip registration; successful updates preserve the existing option and identity rules above
 
 ### server rendering
 
