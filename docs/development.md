@@ -22,9 +22,9 @@ Choose a [published release](https://github.com/ShaulLavo/hotkeys/releases) and 
 ```sh
 revision='3de9d21e2299d2b94ed2d8b012c25bf9358dcfbd'
 base="https://github.com/ShaulLavo/hotkeys/releases/download/hotkeys-$revision"
-bun add "@fregat/hotkeys@$base/fregat-hotkeys-$revision.tgz"
+bun add "@shaulavo/hotkeys@$base/fregat-hotkeys-$revision.tgz"
 # For React apps, also supply react and react-dom 18 or newer:
-bun add "@fregat/react-hotkeys@$base/fregat-react-hotkeys-$revision.tgz"
+bun add "@shaulavo/hotkeys/react@$base/fregat-react-hotkeys-$revision.tgz"
 ```
 
 For npm, replace `bun add` with `npm install` using the same named URLs. Commit your lockfile. The React adapter declares the core as an exact-version peer, so the app supplies its core copy. Install both packages from the same full commit. Other packages in your app that depend on hotkeys should select that same core URL so they share its registry. The install requires no source build, Git checkout, lifecycle scripts or npm publishing credentials.

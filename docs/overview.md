@@ -1,6 +1,6 @@
 # Overview
 
-Use hotkeys for three jobs: observe keyboard state, register shortcut callbacks, or route commands through an editor's focus tree. The core package supports browser and terminal adapters; `@fregat/react-hotkeys` adds hooks for state and registration.
+Use hotkeys for three jobs: observe keyboard state, register shortcut callbacks, or route commands through an editor's focus tree. The core package supports browser and terminal adapters; `@shaulavo/hotkeys/react` adds hooks for state and registration.
 
 ## Read keyboard state
 
@@ -31,7 +31,7 @@ Choose a single binding or a batch of independent bindings:
 The core registry uses one `register` method for both a stroke and an ordered sequence. Keep each handle and unregister it when its owner is removed:
 
 ```ts
-import { getHotkeyRegistry } from '@fregat/hotkeys'
+import { getHotkeyRegistry } from '@shaulavo/hotkeys'
 
 function mountShortcuts(onSave: () => void, onTop: () => void): () => void {
   const registry = getHotkeyRegistry()

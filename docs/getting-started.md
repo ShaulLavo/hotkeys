@@ -11,7 +11,7 @@ Install the packages from [commit-pinned release tarballs](development.md#instal
 Run this in a browser after `document.body` exists. The example creates its own focusable workspace and editor, plus a sidebar.
 
 ```ts
-import { createBrowserDispatcher } from '@fregat/hotkeys'
+import { createBrowserDispatcher } from '@shaulavo/hotkeys'
 
 function mountWorkspace(): () => void {
   const workspaceElement = document.createElement('section')
@@ -81,7 +81,7 @@ The React state hooks observe held keys. `useKeyHold('Shift')` stays true when a
 For a callback while a view is mounted, use the document registry and keep its cleanup handle:
 
 ```ts
-import { getHotkeyRegistry } from '@fregat/hotkeys'
+import { getHotkeyRegistry } from '@shaulavo/hotkeys'
 
 function mountShortcuts(onSave: () => void): () => void {
   const save = getHotkeyRegistry().register('Mod+S', onSave)

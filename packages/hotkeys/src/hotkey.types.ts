@@ -241,7 +241,7 @@ export type HotkeyCallback = (
  *
  * @example
  * ```ts
- * declare module '@fregat/hotkeys' {
+ * declare module '@shaulavo/hotkeys' {
  *   interface HotkeyMeta {
  *     category?: string
  *     icon?: string

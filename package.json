@@ -11,18 +11,20 @@
     }
   },
   "scripts": {
-    "build": "turbo run build --filter='@fregat/*'",
-    "typecheck": "turbo run typecheck --filter='@fregat/*' && bun run docs:check",
+    "build": "turbo run build --filter='@shaulavo/*'",
+    "typecheck": "turbo run typecheck --filter='@shaulavo/*' && bun run docs:check",
     "docs:check": "bun scripts/check-samples.mjs",
     "lint": "bun scripts/check-source-language.ts && oxlint .",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
-    "test": "turbo run test --filter='@fregat/*'",
+    "test": "turbo run test --filter='@shaulavo/*'",
     "verify": "bun run build && bun run typecheck && bun run lint && bun run format:check && bun run test && bun run pack && bun run test:package",
     "pack": "node scripts/pack.mjs",
-    "test:package": "node scripts/check-package.mjs && node scripts/check-package.mjs --bun"
+    "test:package": "node scripts/check-package.mjs && node scripts/check-package.mjs --bun",
+    "release:publish": "bun run build && bunx changeset publish"
   },
   "devDependencies": {
+    "@changesets/cli": "^2.29.8",
     "oxfmt": "0.70.0",
     "oxlint": "1.85.0",
     "turbo": "2.11.5",

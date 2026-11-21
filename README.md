@@ -14,7 +14,7 @@ bun run verify
 ```
 
 ```ts
-import { getHotkeyRegistry } from '@fregat/hotkeys'
+import { getHotkeyRegistry } from '@shaulavo/hotkeys'
 
 function mountShortcuts(onSave: () => void): () => void {
   const save = getHotkeyRegistry().register('Mod+S', onSave)

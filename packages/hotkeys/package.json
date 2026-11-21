@@ -1,13 +1,14 @@
 {
-  "name": "@fregat/hotkeys",
-  "version": "0.0.3",
-  "description": "Keyboard shortcut registration, chords, context-aware keymaps, and display formatting for browser and terminal apps.",
+  "name": "@shaulavo/hotkeys",
+  "version": "0.0.4",
+  "description": "Keyboard shortcut registration, chords, context-aware keymaps, display formatting, and optional React hooks for browser and terminal apps.",
   "keywords": [
     "browser",
     "chords",
     "hotkeys",
     "keybindings",
     "keyboard",
+    "react",
     "shortcuts",
     "typescript"
   ],
@@ -36,13 +37,19 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "import": "./dist/react/index.js",
+      "default": "./dist/react/index.js"
+    },
     "./package.json": "./package.json"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "provenance": true
   },
   "scripts": {
-    "build": "bun build src/index.ts --outdir dist --target browser --format esm --sourcemap=linked --packages external && tsc -p tsconfig.build.json",
+    "build": "bun scripts/build.ts && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint .",
     "format": "oxfmt --write .",
@@ -53,9 +60,32 @@
     "@tanstack/store": "^0.11.1"
   },
   "devDependencies": {
+    "@tanstack/react-store": "^0.11.1",
+    "@testing-library/react": "^16.3.3",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^6.1.1",
     "happy-dom": "^20.14.5",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "typescript": "7.0.2",
     "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "@tanstack/react-store": "^0.11.1",
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "@tanstack/react-store": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    }
   },
   "engines": {
     "node": ">=20"
