@@ -9,20 +9,19 @@ import { fileURLToPath } from 'node:url'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
 const release = JSON.parse(await readFile(join(root, 'release/manifest.json'), 'utf8'))
-const [core, react] = release.artifacts
-const coreFile = join(root, 'release', core.file)
-const reactFile = join(root, 'release', react.file)
+const [artifact] = release.artifacts
+const tarball = join(root, 'release', artifact.file)
 const require = createRequire(new URL('../package.json', import.meta.url))
 const compiler = join(dirname(require.resolve('typescript/package.json')), 'bin/tsc')
-const peers = JSON.parse(await readFile(join(root, 'packages/react-hotkeys/package.json'), 'utf8'))
+const sourceManifest = JSON.parse(
+  await readFile(join(root, 'packages/hotkeys/package.json'), 'utf8'),
+)
 
-const sourceMapSamples = {
-  '@fregat/hotkeys': [['src/parse.ts', 'parseHotkey']],
-  '@fregat/react-hotkeys': [
-    ['src/useHotkey.ts', 'useHotkey'],
-    ['src/HotkeysProvider.tsx', 'HotkeysProvider'],
-  ],
-}
+const sourceMapSamples = [
+  ['.', 'src/parse.ts', 'parseHotkey'],
+  ['./react', 'src/react/useHotkey.ts', 'useHotkey'],
+  ['./react', 'src/react/HotkeysProvider.tsx', 'HotkeysProvider'],
+]
 
 function assertRelativePath(path, label) {
   assert(
@@ -34,12 +33,12 @@ function assertRelativePath(path, label) {
   )
 }
 
-async function checkSourceMap(directory, manifest) {
-  const entrypoint = join(directory, manifest.exports['.'].import)
+async function checkSourceMap(directory, manifest, exportKey, sourceFile, functionName) {
+  const entrypoint = join(directory, manifest.exports[exportKey].import)
   const javascript = await readFile(entrypoint, 'utf8')
   const reference = javascript.match(/\/\/# sourceMappingURL=(\S+)\s*$/)?.[1]
-  assert(reference, `${manifest.name}: missing linked JavaScript source map`)
-  assertRelativePath(reference, `${manifest.name} sourceMappingURL`)
+  assert(reference, `${manifest.name} (${exportKey}): missing linked JavaScript source map`)
+  assertRelativePath(reference, `${manifest.name} (${exportKey}) sourceMappingURL`)
   const map = JSON.parse(await readFile(join(dirname(entrypoint), reference), 'utf8'))
   assert.equal(map.version, 3)
   assert(typeof map.mappings === 'string' && map.mappings.length > 0)
@@ -55,51 +54,58 @@ async function checkSourceMap(directory, manifest) {
     )
   }
 
-  const decoded = new SourceMap(map)
-  for (const [source, functionName] of sourceMapSamples[manifest.name]) {
-    const sourceIndex = map.sources.findIndex(
-      (name) => name === source || name.endsWith(`/${source}`),
-    )
-    assert(sourceIndex >= 0, `${manifest.name}: missing source ${source}`)
-    const original = await readFile(
-      join(root, 'packages', manifest.name.slice('@fregat/'.length), source),
-      'utf8',
-    )
-    assert.equal(map.sourcesContent[sourceIndex], original)
-
-    const offset = javascript.indexOf(`function ${functionName}(`)
-    assert(offset >= 0, `${manifest.name}: missing generated function ${functionName}`)
-    const prefix = javascript.slice(0, offset + 'function '.length)
-    const line = prefix.split('\n').length - 1
-    const column = prefix.length - prefix.lastIndexOf('\n') - 1
-    const entry = decoded.findEntry(line, column)
-    assert.equal(entry.originalSource, map.sources[sourceIndex])
-    const originalLine = original.split('\n')[entry.originalLine]
-    assert(originalLine?.includes(`function ${functionName}(`))
-    assert(entry.originalColumn >= 0 && entry.originalColumn < originalLine.length)
+  // With --splitting, code may live in a shared chunk imported by the entrypoint.
+  let targetJs = javascript
+  let targetMap = map
+  let offset = targetJs.indexOf(`function ${functionName}(`)
+  if (offset < 0) {
+    const chunkMatch = javascript.match(/from\s*["'](\.\.?\/[^"']+\.js)["']/)
+    if (chunkMatch) {
+      const chunkPath = join(dirname(entrypoint), chunkMatch[1])
+      targetJs = await readFile(chunkPath, 'utf8')
+      const chunkRef = targetJs.match(/\/\/# sourceMappingURL=(\S+)\s*$/)?.[1]
+      assert(chunkRef, `${manifest.name}: missing chunk source map`)
+      targetMap = JSON.parse(await readFile(join(dirname(chunkPath), chunkRef), 'utf8'))
+      offset = targetJs.indexOf(`function ${functionName}(`)
+    }
   }
+
+  const sourceIndex = targetMap.sources.findIndex(
+    (name) => name === sourceFile || name.endsWith(`/${sourceFile}`),
+  )
+  assert(sourceIndex >= 0, `${manifest.name} (${exportKey}): missing source ${sourceFile}`)
+  const original = await readFile(join(root, 'packages/hotkeys', sourceFile), 'utf8')
+  assert.equal(targetMap.sourcesContent[sourceIndex], original)
+  assert(offset >= 0, `${manifest.name} (${exportKey}): missing generated function ${functionName}`)
+  const decoded = new SourceMap(targetMap)
+  const prefix = targetJs.slice(0, offset + 'function '.length)
+  const line = prefix.split('\n').length - 1
+  const column = prefix.length - prefix.lastIndexOf('\n') - 1
+  const entry = decoded.findEntry(line, column)
+  assert.equal(entry.originalSource, targetMap.sources[sourceIndex])
+  const originalLine = original.split('\n')[entry.originalLine]
+  assert(originalLine?.includes(`function ${functionName}(`))
+  assert(entry.originalColumn >= 0 && entry.originalColumn < originalLine.length)
 }
 
 const temporary = await mkdtemp(join(tmpdir(), 'hotkeys-consumer-'))
 
 try {
-  for (const artifact of release.artifacts) {
-    const bytes = await readFile(join(root, 'release', artifact.file))
-    assert.equal(createHash('sha256').update(bytes).digest('hex'), artifact.sha256)
-  }
+  const bytes = await readFile(tarball)
+  assert.equal(createHash('sha256').update(bytes).digest('hex'), artifact.sha256)
   await writeFile(
     join(temporary, 'package.json'),
     JSON.stringify({
       private: true,
       type: 'module',
       dependencies: {
-        '@fregat/hotkeys': `file:${coreFile}`,
-        '@fregat/react-hotkeys': `file:${reactFile}`,
-        react: peers.devDependencies.react,
-        'react-dom': peers.devDependencies['react-dom'],
-        '@types/react': peers.devDependencies['@types/react'],
-        '@types/react-dom': peers.devDependencies['@types/react-dom'],
-        'happy-dom': peers.devDependencies['happy-dom'],
+        '@shaulavo/hotkeys': `file:${tarball}`,
+        '@tanstack/react-store': sourceManifest.devDependencies['@tanstack/react-store'],
+        react: sourceManifest.devDependencies.react,
+        'react-dom': sourceManifest.devDependencies['react-dom'],
+        '@types/react': sourceManifest.devDependencies['@types/react'],
+        '@types/react-dom': sourceManifest.devDependencies['@types/react-dom'],
+        'happy-dom': sourceManifest.devDependencies['happy-dom'],
       },
     }),
   )
@@ -111,24 +117,20 @@ try {
       : ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--package-lock=false'],
     { cwd: temporary, stdio: 'inherit' },
   )
-  const installed = join(temporary, 'node_modules/@fregat')
-  const manifest = JSON.parse(await readFile(join(installed, 'react-hotkeys/package.json'), 'utf8'))
-  assert.equal(manifest.peerDependencies['@fregat/hotkeys'], core.version)
-  assert.equal(manifest.dependencies['@fregat/hotkeys'], undefined)
-  for (const artifact of release.artifacts) {
-    const manifest = JSON.parse(
-      await readFile(join(temporary, 'node_modules', artifact.name, 'package.json'), 'utf8'),
-    )
-    assert.equal(manifest.version, artifact.version)
-    assert.equal(manifest.scripts, undefined)
-    assert.equal(manifest.devDependencies, undefined)
-    await readFile(join(temporary, 'node_modules', artifact.name, manifest.types))
-    await checkSourceMap(join(temporary, 'node_modules', artifact.name), manifest)
+  const pkgDir = join(temporary, 'node_modules/@shaulavo/hotkeys')
+  const manifest = JSON.parse(await readFile(join(pkgDir, 'package.json'), 'utf8'))
+  assert.equal(manifest.version, artifact.version)
+  assert.equal(manifest.scripts, undefined)
+  assert.equal(manifest.devDependencies, undefined)
+  await readFile(join(pkgDir, manifest.exports['.'].types))
+  await readFile(join(pkgDir, manifest.exports['./react'].types))
+  for (const [exportKey, sourceFile, fn] of sourceMapSamples) {
+    await checkSourceMap(pkgDir, manifest, exportKey, sourceFile, fn)
   }
   console.log('Packed JavaScript source maps resolve to embedded TypeScript originals.')
   const consumer = `
 import assert from 'node:assert/strict'
-import { createDispatcher, createKeyInput, matchesKeyInput, parseHotkey, getHotkeyRegistry } from '@fregat/hotkeys'
+import { createDispatcher, createKeyInput, matchesKeyInput, parseHotkey, getHotkeyRegistry } from '@shaulavo/hotkeys'
 import {
   getHotkeyRegistry as reactRegistry,
   HotkeysProvider,
@@ -143,10 +145,10 @@ import {
   useHotkeySequenceRecorder,
   useHotkeySequences,
   useKeyHold,
-} from '@fregat/react-hotkeys'
+} from '@shaulavo/hotkeys/react'
 import { createElement } from 'react'
 import { renderToString } from 'react-dom/server'
-import { HotkeyRecorder, HotkeySequenceRecorder } from '@fregat/hotkeys'
+import { HotkeyRecorder, HotkeySequenceRecorder } from '@shaulavo/hotkeys'
 assert.equal(parseHotkey('Mod+S', 'linux').ctrl, true)
 assert.equal(parseHotkey('Mod+S', 'mac').meta, true)
 assert.equal(reactRegistry, getHotkeyRegistry)
@@ -327,10 +329,10 @@ for (const Recorder of [HotkeyRecorder, HotkeySequenceRecorder]) {
   execFileSync(process.execPath, ['batch-consumer.mjs'], { cwd: temporary, stdio: 'inherit' })
   await writeFile(
     join(temporary, 'consumer.ts'),
-    `import { createDispatcher, createHotkeyRegistry, formatHotkeySequence, HotkeyRecorder, HotkeySequenceRecorder, parseHotkey } from '@fregat/hotkeys'
-import { useHotkey, useHotkeys, useHotkeySequence, useHotkeySequences } from '@fregat/react-hotkeys'
-import type { HotkeySequence } from '@fregat/hotkeys'
-import type { ReactHotkeySequenceRecorder, UseHotkeyDefinition, UseHotkeySequenceDefinition } from '@fregat/react-hotkeys'
+    `import { createDispatcher, createHotkeyRegistry, formatHotkeySequence, HotkeyRecorder, HotkeySequenceRecorder, parseHotkey } from '@shaulavo/hotkeys'
+import { useHotkey, useHotkeys, useHotkeySequence, useHotkeySequences } from '@shaulavo/hotkeys/react'
+import type { HotkeySequence } from '@shaulavo/hotkeys'
+import type { ReactHotkeySequenceRecorder, UseHotkeyDefinition, UseHotkeySequenceDefinition } from '@shaulavo/hotkeys/react'
 parseHotkey('Mod+S', 'linux')
 createDispatcher({ platform: 'linux', keymap: [] })
 useHotkey('Mod+S', () => {})

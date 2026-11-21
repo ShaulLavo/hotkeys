@@ -134,8 +134,8 @@ each continuation's complete candidate set is ranked and processed for removals 
 `keyInputFromTerminalKey` reads keys parsed from terminal input (opentui's `KeyEvent` shape: legacy escapes and the kitty protocol). legacy Alt arrives as Alt, never as the desktop Meta key. a terminal host runs the dom-free dispatcher and sends replayed keys to the shell
 
 ```ts
-import { createDispatcher, keyInputFromTerminalKey, terminalKeyEffects } from '@fregat/hotkeys'
-import type { TerminalKeyLike } from '@fregat/hotkeys'
+import { createDispatcher, keyInputFromTerminalKey, terminalKeyEffects } from '@shaulavo/hotkeys'
+import type { TerminalKeyLike } from '@shaulavo/hotkeys'
 
 const hotkeys = createDispatcher<TerminalKeyLike>({
   keymap: [{ keys: 'Control+K S', command: 'settings.open' }],

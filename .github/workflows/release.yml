@@ -1,37 +1,63 @@
-name: Release packages
+name: Release
 
 on:
   push:
-    tags: ['hotkeys-*']
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+  pull-requests: write
+  id-token: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  verify:
-    uses: ./.github/workflows/ci.yml
-  draft:
-    needs: verify
+  release:
+    name: Version or publish to npm
     runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: write
+    timeout-minutes: 10
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v4
         with:
-          name: hotkeys-packages
-          path: release
-      - name: Check release identity and checksums
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            ~/.npm
+          key: hotkeys-bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'package.json', 'patches/*') }}
+          restore-keys: hotkeys-bun-${{ runner.os }}-
+
+      - run: bun install --frozen-lockfile
+      - run: bun run verify
+
+      - name: Configure npm authentication
         env:
-          TAG: ${{ github.ref_name }}
-          REVISION: ${{ github.sha }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          test "$TAG" = "hotkeys-$REVISION"
-          node -e 'const m = require("./release/manifest.json"); if (m.revision !== process.env.REVISION || m.tag !== process.env.TAG) process.exit(1)'
-          (cd release && sha256sum --check SHA256SUMS)
-      - name: Create draft with the verified packages
+          set -euo pipefail
+          if [ -n "${NPM_TOKEN:-}" ]; then
+            npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
+          fi
+
+      - name: Create Release Pull Request or Publish to npm
+        uses: changesets/action@v1
+        with:
+          version: bunx changeset version && bun install --lockfile-only
+          publish: bun run release:publish
+          createGithubReleases: true
         env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
-        run: gh release create "$TAG" release/* --verify-tag --draft --title "$TAG" --notes 'Core and React packages for this commit. Review manifest.json and SHA256SUMS before publishing.'
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_CONFIG_PROVENANCE: 'true'

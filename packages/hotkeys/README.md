@@ -1,4 +1,4 @@
-# @fregat/hotkeys
+# @shaulavo/hotkeys
 
 Keyboard shortcut registration, chords, context-aware keymaps, and display formatting for browser and terminal apps.
 
@@ -9,7 +9,7 @@ Install a commit-pinned tarball from [hotkeys releases](https://github.com/Shaul
 ## Use
 
 ```ts
-import { getHotkeyRegistry } from '@fregat/hotkeys'
+import { getHotkeyRegistry } from '@shaulavo/hotkeys'
 
 function mountShortcuts(onSave: () => void): () => void {
   const save = getHotkeyRegistry().register('Mod+S', onSave)

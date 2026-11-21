@@ -1,6 +1,6 @@
 # api
 
-every export of `@fregat/hotkeys`, grouped by job. the source of truth is [`src/index.ts`](../src/index.ts). `@fregat/react-hotkeys` re-exports all of it
+every export of `@shaulavo/hotkeys`, grouped by job. the source of truth is [`src/index.ts`](../src/index.ts). `@shaulavo/hotkeys/react` re-exports all of it
 
 ## register shortcuts
 
@@ -86,7 +86,7 @@ both recorder classes support `setOptions(patch)` and `replaceOptions(options)`.
 
 ## react
 
-`@fregat/react-hotkeys` adds `HotkeysProvider`, `useHotkey`, `useHotkeys`, `useHotkeySequence`, `useHotkeySequences`, `useHotkeyRecorder`, `useHotkeySequenceRecorder`, `useHotkeyRegistrations`, `useHeldKeys`, `useHeldKeyCodes`, `useKeyHold`, and `useHotkeyHint`. it declares `react` and `react-dom` 18 or newer as peer dependencies
+`@shaulavo/hotkeys/react` adds `HotkeysProvider`, `useHotkey`, `useHotkeys`, `useHotkeySequence`, `useHotkeySequences`, `useHotkeyRecorder`, `useHotkeySequenceRecorder`, `useHotkeyRegistrations`, `useHeldKeys`, `useHeldKeyCodes`, `useKeyHold`, and `useHotkeyHint`. it declares `react` and `react-dom` 18 or newer as peer dependencies
 
 `useHotkey(keys, callback, options?)` registers for the component's lifetime and re-syncs the callback and options on every render, so the callback never sees stale state. `options` is the registration options above, except `target` can also be a React ref. `enabled: false` keeps the registration listed and stops it firing
 
@@ -95,7 +95,7 @@ useHotkey('Escape', onClose, { enabled: isOpen })
 useHotkey('Mod+S', save, { target: editorRef })
 ```
 
-`HotkeysProvider` takes `defaultOptions` with the keys `hotkey`, `hotkeySequence`, `hotkeyRecorder`, and `hotkeySequenceRecorder`. each holds defaults for the matching hook. the react hooks use the registry, so they do not have focus contexts. for those, use `registry.dispatcher` or a dispatcher from `@fregat/hotkeys`
+`HotkeysProvider` takes `defaultOptions` with the keys `hotkey`, `hotkeySequence`, `hotkeyRecorder`, and `hotkeySequenceRecorder`. each holds defaults for the matching hook. the react hooks use the registry, so they do not have focus contexts. for those, use `registry.dispatcher` or a dispatcher from `@shaulavo/hotkeys`
 
 ### option changes in React
 

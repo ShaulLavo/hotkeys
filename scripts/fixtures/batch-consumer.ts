@@ -23,8 +23,8 @@ Object.assign(globalThis, {
 
 const { act, Component, createElement } = await import('react')
 const { createRoot } = await import('react-dom/client')
-const { getHotkeyRegistry } = await import('@fregat/hotkeys')
-const { useHotkeys, useHotkeySequences } = await import('@fregat/react-hotkeys')
+const { getHotkeyRegistry } = await import('@shaulavo/hotkeys')
+const { useHotkeys, useHotkeySequences } = await import('@shaulavo/hotkeys/react')
 
 class Boundary extends Component<
   { children?: ReactNode; onError: (error: unknown) => void },

@@ -43,8 +43,3 @@ jobs:
           restore-keys: hotkeys-bun-${{ runner.os }}-
       - run: bun install --frozen-lockfile
       - run: bun run verify
-      - uses: actions/upload-artifact@v4
-        with:
-          name: hotkeys-packages
-          path: release/
-          if-no-files-found: error
