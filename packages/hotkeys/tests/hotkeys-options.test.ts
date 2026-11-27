@@ -536,8 +536,12 @@ test.each(['document', 'window', 'element'] as const)(
     const frame = document.createElement('iframe')
     document.body.append(frame)
     const other = frame.contentDocument!
-    const target: Target =
-      kind === 'document' ? other : kind === 'window' ? frame.contentWindow! : other.body
+    const targets: Record<'document' | 'window' | 'element', Target> = {
+      document: other,
+      window: frame.contentWindow!,
+      element: other.body,
+    }
+    const target = targets[kind]
     const hotkeys = setup()
     expect(() => hotkeys.register('F8', vi.fn(), { target })).toThrow(/registry document/)
     expect(hotkeys.registrations.state.size).toBe(0)

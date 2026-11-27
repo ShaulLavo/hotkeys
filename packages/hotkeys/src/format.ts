@@ -94,6 +94,18 @@ export type DisplayHotkey = RegisterableHotkey | ParsedHotkey | (string & {})
  * // Returns: 'Esc' (on all platforms)
  * ```
  */
+function formatModifierSegment(
+  modifier: CanonicalModifier | 'Mod',
+  platform: ReturnType<typeof detectPlatform>,
+  modifierSymbols: boolean,
+): string {
+  if (platform === 'mac') {
+    return modifierSymbols ? MAC_MODIFIER_SYMBOLS[modifier] : MAC_MODIFIER_LABELS[modifier]
+  }
+  if (platform === 'windows') return WINDOWS_MODIFIER_LABELS[modifier]
+  return LINUX_MODIFIER_LABELS[modifier]
+}
+
 export function formatForDisplay(
   hotkey: DisplayHotkey,
   options: FormatDisplayOptions & { parts: true },
@@ -135,13 +147,7 @@ export function formatForDisplay(
       const modifier = (MODIFIER_ALIASES[segment] ?? MODIFIER_ALIASES[segment.toLowerCase()]) as
         | CanonicalModifier
         | 'Mod'
-      return platform === 'mac'
-        ? modifierSymbols
-          ? MAC_MODIFIER_SYMBOLS[modifier]
-          : MAC_MODIFIER_LABELS[modifier]
-        : platform === 'windows'
-          ? WINDOWS_MODIFIER_LABELS[modifier]
-          : LINUX_MODIFIER_LABELS[modifier]
+      return formatModifierSegment(modifier, platform, modifierSymbols)
     }
     const code = /^\[([A-Za-z][A-Za-z0-9]*)\]$/.exec(segment)?.[1]
     const label = options.keyLabels?.[code ?? segment]

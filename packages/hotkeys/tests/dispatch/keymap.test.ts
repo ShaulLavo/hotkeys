@@ -12,12 +12,18 @@ import {
 } from '../../src'
 import type { KeymapEntry } from '../../src'
 
+function strokeCode(key: string): string {
+  if (/^[a-z]$/.test(key)) return `Key${key.toUpperCase()}`
+  if (/^\d$/.test(key)) return `Digit${key}`
+  return ''
+}
+
 function stroke(spec: string) {
   const parts = spec.split('-')
   const key = parts.pop()!
   return createKeyInput({
     key: key === 'space' ? ' ' : key,
-    code: /^[a-z]$/.test(key) ? `Key${key.toUpperCase()}` : /^\d$/.test(key) ? `Digit${key}` : '',
+    code: strokeCode(key),
     modifiers: { ctrl: parts.includes('ctrl'), meta: parts.includes('cmd') },
   })
 }
