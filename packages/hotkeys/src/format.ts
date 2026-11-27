@@ -66,6 +66,18 @@ export function formatHotkey(parsed: ParsedHotkey): string {
 
 export type DisplayHotkey = RegisterableHotkey | ParsedHotkey | (string & {})
 
+function formatModifierSegment(
+  modifier: CanonicalModifier | 'Mod',
+  platform: ReturnType<typeof detectPlatform>,
+  modifierSymbols: boolean,
+): string {
+  if (platform === 'mac') {
+    return modifierSymbols ? MAC_MODIFIER_SYMBOLS[modifier] : MAC_MODIFIER_LABELS[modifier]
+  }
+  if (platform === 'windows') return WINDOWS_MODIFIER_LABELS[modifier]
+  return LINUX_MODIFIER_LABELS[modifier]
+}
+
 /**
  * Formats a hotkey for display in a user interface.
  *
@@ -94,18 +106,6 @@ export type DisplayHotkey = RegisterableHotkey | ParsedHotkey | (string & {})
  * // Returns: 'Esc' (on all platforms)
  * ```
  */
-function formatModifierSegment(
-  modifier: CanonicalModifier | 'Mod',
-  platform: ReturnType<typeof detectPlatform>,
-  modifierSymbols: boolean,
-): string {
-  if (platform === 'mac') {
-    return modifierSymbols ? MAC_MODIFIER_SYMBOLS[modifier] : MAC_MODIFIER_LABELS[modifier]
-  }
-  if (platform === 'windows') return WINDOWS_MODIFIER_LABELS[modifier]
-  return LINUX_MODIFIER_LABELS[modifier]
-}
-
 export function formatForDisplay(
   hotkey: DisplayHotkey,
   options: FormatDisplayOptions & { parts: true },
