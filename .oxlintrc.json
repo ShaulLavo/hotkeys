@@ -2,6 +2,9 @@
   "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/main/npm/oxlint/configuration_schema.json",
   "plugins": ["unicorn", "typescript", "oxc", "react"],
   "rules": {
+    "max-depth": ["error", 3],
+    "no-else-return": "error",
+    "no-nested-ternary": "error",
     "react/rules-of-hooks": "error"
   }
 }
