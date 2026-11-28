@@ -1,6 +1,8 @@
 import { afterEach, expect, test, vi } from 'vitest'
-import { createKeymapRuntime } from '../../src'
-import type { KeymapBinding, KeymapRuntime, KeymapSequenceEvent } from '../../src'
+import { createKeymapRuntime } from '../../src/adapters/browser-keymap.js'
+import type { KeymapBinding } from '../../src/adapter/index.js'
+import type { KeymapRuntime } from '../../src/adapters/browser-keymap.js'
+import type { KeymapSequenceEvent } from '../../src'
 
 let runtime: KeymapRuntime<string> | undefined
 const bindings: readonly KeymapBinding<string>[] = [
@@ -346,7 +348,7 @@ test('a pending chord publishes its label and clears it when it ends', () => {
   runtime.claimKeybinding(key('k', { ctrlKey: true }))
   runtime.claimKeybinding(key('d', { ctrlKey: true }))
   runtime.claimKeybinding(key('e', { ctrlKey: true }))
-  expect(labels).toEqual(['Mod+K/2', 'Mod+K Mod+D/1', null])
+  expect(labels).toEqual(['Control+K/2', 'Control+K Control+D/1', null])
 })
 
 test('a mismatch replays the buffered keys in order before the new key runs', () => {

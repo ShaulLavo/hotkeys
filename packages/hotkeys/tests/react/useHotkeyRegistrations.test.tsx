@@ -116,7 +116,7 @@ describe('useHotkeyRegistrations', () => {
     expect(result.current.hotkeys).toHaveLength(1)
 
     act(() => {
-      handle.unregister()
+      handle.dispose()
     })
 
     expect(result.current.hotkeys).toHaveLength(0)
@@ -212,8 +212,8 @@ describe('useHotkeyRegistrations', () => {
     expect(previous.sequences[1]!.triggerCount).toBe(0)
 
     act(() => {
-      firstHotkey.unregister()
-      firstSequence.unregister()
+      firstHotkey.dispose()
+      firstSequence.dispose()
     })
 
     expect(result.current.hotkeys.map((view) => view.id)).toEqual([secondHotkey.id])

@@ -77,7 +77,7 @@ export interface HotkeyRecorderOptions extends RecorderOptions {
  * })
  *
  * // Cleanup
- * recorder.destroy()
+ * recorder.dispose()
  * unsubscribe()
  * ```
  */
@@ -177,7 +177,12 @@ export class HotkeyRecorder {
         this.#options.onReject?.(rejection)
         return
       }
-      const finalHotkey = hotkeyChordFromKeydown(event, platform, this.#options.recordBy)
+      const finalHotkey = hotkeyChordFromKeydown(
+        event,
+        platform,
+        this.#options.recordBy,
+        this.#options.modifierMode,
+      )
       if (finalHotkey === null) {
         return
       }
@@ -302,7 +307,11 @@ export class HotkeyRecorder {
    * Call this when you're done with the recorder to ensure
    * all event listeners are properly removed.
    */
-  destroy(): void {
+  [Symbol.dispose](): void {
+    this.dispose()
+  }
+
+  dispose(): void {
     this.stop()
   }
 }

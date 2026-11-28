@@ -1,19 +1,19 @@
-# concepts
+# Concepts
 
-the model behind hotkeys: a focus tree, a context stack, a trie of chords, and one ranking rule. read this for the picture, then [keymaps](keymaps.md) for the exact rules
+Hotkeys resolves keyboard input through four parts: a focus tree, a context stack, a chord trie, and one ranking rule. Read this page for the mental model, then see [Keymaps](keymaps.md) for the exact resolution rules.
 
-## the short version
+## The short version
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../../../docs/assets/key-resolution.dark.svg">
   <img alt="A key press flows through the focus path and context stack, ranks matching bindings, and runs the first handler that does not decline. A declining handler passes the key to the next ancestor, then the next binding." src="../../../docs/assets/key-resolution.light.svg">
 </picture>
 
-a key press never goes to a global list of shortcuts. it goes to wherever focus is, and the focus decides which bindings are even in play. that is how `Mod+B` can bold text in an editor and toggle a sidebar everywhere else
+A dispatcher does not scan a flat global list of shortcuts. Each key press starts at the focused node, and that node's ancestor path determines which bindings can match. That is how `Mod+B` toggles bold text inside an editor and toggles a sidebar everywhere else in the workspace.
 
-## the focus tree
+## The focus tree
 
-a focus node is a place focus can be: a workspace, an editor, a terminal pane. nodes form a tree through `parent`, and each node carries a context and the command handlers that live there
+A focus node represents a region that can hold focus, such as a workspace, an editor, or a terminal pane. Nodes connect through `parent`, and each node carries a context and command handlers.
 
 ```ts
 const hotkeys = createBrowserDispatcher({ keymap })
@@ -28,33 +28,48 @@ const editor = hotkeys.createNode({
 })
 ```
 
-in the browser you tie nodes to elements with `attachElement(node, element)`. when a key goes down, the closest attached element on the event path picks the node, and the deepest node attached to that element becomes focused. so clicking or tabbing into the editor is what moves focus. outside the browser you call `node.focus()` yourself. removing the focused node, or one it sits inside, moves focus to its nearest live parent
+In a browser, tie nodes to DOM elements with `attachElement(node, element)`. When a keydown event fires, the dispatcher walks the event's composed path, finds the closest attached element, and focuses the deepest node attached to that element. Clicking or tabbing into a pane moves dispatcher focus automatically. Outside a browser, call `node.focus()` directly. Removing the focused node or one of its ancestors moves focus to the nearest live parent.
 
-## the context stack
+When an application embeds an independent widget such as a terminal or code editor, call `hotkeys.asHosted()` and pass the enclosing node as a `HostedFocusNode` parent. The widget attaches its own child nodes into the same focus tree while the host keeps its typed command map intact.
 
-the contexts of the nodes from the outermost to the focused one form the stack. a node with an empty context adds nothing. read it any time with `dispatcher.contextStack()`
+## The context stack
 
-a binding's `context` is a predicate over that stack, written in Zed's shorthand: `Workspace > !Terminal`, `Editor && extension == md`. a binding with no `context` matches everywhere
+The contexts of the nodes from the outermost ancestor down to the focused node form the context stack. Nodes with an empty context add no entry. Call `dispatcher.contextStack()` to inspect the current stack at any time.
 
-## ranking
+A binding's `context` field is a predicate evaluated against that stack, using Zed's syntax: `Workspace > !Terminal` or `Editor && extension == md`. A binding without `context` matches every focus stack.
 
-when several bindings match a key, the dispatcher picks by deepest matching context, then by source (`user`, then `pack`, then `base`, then `default`), then by table order, with later entries first. the runnable version is in [keymaps](keymaps.md#ranking)
+## Ranking
 
-a handler that returns `false` declines: the command goes to the next ancestor, and then the key goes to the next candidate binding. when nothing takes the key, it goes on to the browser's default handling
+When multiple bindings match a key, the dispatcher sorts candidates by:
 
-## printed keys and physical keys
+1. Deepest context matched by `context`.
+2. Binding source: `user`, then `pack`, then `base`, then `default`.
+3. Table order, with later entries winning ties.
 
-logical bindings follow the printed character. `?` matches a `?` whether or not the layout needs Shift to produce it; `Control++` likewise matches Control with a printed `+`. this applies to non-letter glyphs consisting of one Unicode code point, including digits, at any position in a chord. letters and named keys keep exact Shift matching: `A` does not match Shift+A, and `Enter` does not match Shift+Enter. `Shift+?` explicitly requires Shift
+The full rules and override examples live in [Ranking](keymaps.md#ranking).
 
-physical bindings use bracketed codes such as `[Slash]` and `Control+[KeyE]`. their modifiers are always exact: Shift+Slash requires `Shift+[Slash]`, even when its printed character is `?`. the input and recorded shortcut keep their actual modifiers; implicit Shift only changes logical matching
+If a command handler returns `false`, it declines the command. The dispatcher tries the next ancestor node for the same command, then moves to the next candidate binding. If no handler accepts the key, the browser or host runs its default behavior.
 
-the dispatcher tries an exact printed-key match, then an exact physical-code match, then a printed-glyph match allowing implicit Shift, and finally a compatible positional fallback with the original modifiers. exact `Shift+?` and `Shift+[Slash]` therefore take priority over a permissive `?` binding
+## Printed keys and physical keys
 
-layout-produced Latin letters keep their printed meaning on letter-key positions, including accents: Control with `é` on `KeyE` does not activate logical `Control+E`. use `Control+[KeyE]` for that position. the existing Alt compatibility fallback for transformed glyphs remains available, but AltGraph's synthetic Alt does not qualify: typing `é` with AltGr does not activate logical `E`. non-Latin layouts and dead keys can also use positional fallback
+Logical bindings match the printed character. `?` matches a `?` whether or not the layout requires Shift to type it. `Control++` matches Control with a printed `+`. This implicit-Shift rule applies to single-code-point non-letter glyphs, including digits, at any stroke in a chord. Letters and named keys always require exact Shift matching: `A` does not match `Shift+A`, and `Enter` does not match `Shift+Enter`. Writing `Shift+?` requires Shift explicitly.
 
-## chords
+Physical bindings use bracketed `event.code` tokens such as `[Slash]` and `Control+[KeyE]`. Physical bindings always require exact modifiers. `Shift+Slash` requires `Shift+[Slash]` even when it prints `?`. Input events and recorded shortcuts keep their actual modifiers. Implicit Shift affects logical matching alone.
 
-strokes separated by spaces, like `Mod+K Mod+C`, are chords. the dispatcher keeps a trie of every bound sequence and holds a pending chord while a longer binding is still reachable
+For each stroke, the dispatcher tries matching edges in priority order:
+
+1. Exact printed-key match.
+2. Exact physical-code match.
+3. Printed-glyph match allowing implicit Shift.
+4. Positional fallback with the original modifiers.
+
+Exact `Shift+?` and `Shift+[Slash]` therefore win over permissive `?`. If a higher-priority edge has only bindings that are ineligible for the current context or `isAvailable` check, lookup continues to the next matching edge so an inactive `Terminal` binding on logical `Control+A` cannot block an active `Editor` binding on physical `Control+[KeyQ]`.
+
+Latin letters keep their printed meaning on letter keys, including accented characters: pressing Control with `é` on `KeyE` does not trigger logical `Control+E`. Bind `Control+[KeyE]` when you want that physical key position. Alt compatibility fallback for transformed glyphs remains available, but AltGraph's synthetic Control+Alt does not trigger logical shortcuts. Non-Latin layouts and dead keys can still use positional fallback.
+
+## Chords
+
+Space-separated strokes such as `Mod+K Mod+C` form chords. Compiling a keymap builds one trie over every bound sequence, and the dispatcher holds a chord pending while at least one eligible longer binding remains reachable.
 
 ```mermaid
 stateDiagram-v2
@@ -66,22 +81,24 @@ stateDiagram-v2
     Pending --> Idle: focus change, blur, hidden tab or pointer down
 ```
 
-the whole pending chord belongs to the focus it started under, so it cannot leak into a different part of the app. `onPendingChange` tells you when to show a hint, and `onSequence` reports how each chord ended
+A pending chord belongs to the focus under which it started and cancels if focus moves. Subscribe with `dispatcher.subscribePending(listener)` or pass `onPendingChange` to display a pending chord hint, and pass `onSequence` to observe how each chord ends.
 
-## layers
+## Layers
 
-hotkeys has three entry points. pick the lowest one you need
+Hotkeys exposes three main layers plus two specialized subpaths. Pick the narrowest one your app needs:
 
-- `getHotkeyRegistry()` for `Mod+S` while a view is open. it adds `register` and `unregister` by key, with the newest registration running first
-- `createBrowserDispatcher()` for the same key doing different jobs by focus. it adds focus nodes, contexts, user overrides, and DOM listeners
-- `createDispatcher()` for a dispatcher with no DOM. it is the same engine fed by your own key events, such as a terminal
+- `registerHotkey` and `getHotkeyRegistry()` for document-level callbacks such as `Mod+S`. The newest registration for a key runs first, and `conflictBehavior` controls collisions.
+- `createBrowserDispatcher()` for focus-aware browser apps. It adds focus nodes, contexts, typed command maps, user overrides, diagnostics via `explain()`, and DOM listeners.
+- `createDispatcher()` for DOM-free hosts that supply their own `KeyInput` events and focus calls.
+- `@shaulavo/hotkeys/terminal` for parsed terminal input (`createTerminalDispatcher`).
+- `@shaulavo/hotkeys/adapter` for custom runtimes that assemble `createChordRuntime`, `buildKeymapTrie`, and `attachKeyListeners` directly.
 
-the registry sits on a browser dispatcher, so you can start simple and reach the dispatcher later through `registry.dispatcher`
+Every stateful handle and runtime (`HotkeyRegistration`, `HotkeyRegistry`, `Dispatcher`, `BrowserDispatcher`, `TerminalDispatcher`, `HotkeyRecorder`, `HotkeySequenceRecorder`, and `KeyStateTracker`) tears down with `.dispose()` and supports `[Symbol.dispose]()`.
 
-the two layers resolve a shared key differently. in the registry the newest registration for a key runs first, and a callback that returns `false` passes the key on to the next one. it has no notion of focus, so two registrations of `Mod+B` on one target are a conflict, and `conflictBehavior` decides whether that warns, throws, replaces the old one, or is allowed. when the same key should mean different things in different places, use a dispatcher and give each place a context. text inputs are also handled per layer: the registry has `ignoreInputs`, and the dispatcher has contexts, see [troubleshooting](troubleshooting.md#it-works-outside-inputs-but-not-inside)
+The registry and the dispatcher resolve shared keys differently. In the registry, the newest registration for a key runs first, and returning `false` falls through to older registrations. Because the registry has no focus tree, two registrations of `Mod+B` on one target count as a conflict. When one key must perform different actions in different panes, use a dispatcher with focus contexts. Text input filtering also differs by layer: the registry uses `ignoreInputs`, while a dispatcher uses focus contexts. See [It works outside inputs but not inside](troubleshooting.md#it-works-outside-inputs-but-not-inside).
 
-## where to go next
+## Where to go next
 
-- [keymaps](keymaps.md) has the predicate syntax, ranking, unbinding, and terminal examples
-- [troubleshooting](troubleshooting.md) covers shortcuts that do not fire
-- [api](api.md) lists every export
+- [Keymaps](keymaps.md) covers predicate syntax, ranking, unbinding, `explain()`, chord rules, and terminals.
+- [Troubleshooting](troubleshooting.md) diagnoses shortcuts that fail to fire or behave unexpectedly.
+- [API reference](api.md) documents every export across all four entrypoints.

@@ -8,7 +8,7 @@ import {
   useHotkeySequence,
   useHotkeySequences,
 } from '../../src/react/index.js'
-import type { Hotkey, HotkeyCallback, RegisterableHotkey } from '../../src/index.js'
+import type { Hotkey, HotkeyCallback, HotkeyStroke } from '../../src/index.js'
 import type { ReactNode } from 'react'
 import type { UseHotkeyOptions } from '../../src/react/index.js'
 
@@ -46,8 +46,8 @@ afterEach(() => {
 
 const equivalentInputs: ReadonlyArray<{
   name: string
-  initial: RegisterableHotkey
-  next: RegisterableHotkey
+  initial: HotkeyStroke
+  next: HotkeyStroke
   key: Hotkey
   event: KeyboardEventInit
 }> = [
@@ -77,7 +77,7 @@ test.each(identityCases)(
   ({ kind, initial, next, key, event }) => {
     const callback = vi.fn()
     const { rerender } = renderHook(
-      ({ binding }: { binding: RegisterableHotkey }) => {
+      ({ binding }: { binding: HotkeyStroke }) => {
         useHotkey(kind === 'single' ? binding : 'F12', callback, {
           platform: 'linux',
           enabled: kind === 'single',
@@ -111,7 +111,7 @@ test.each(identityCases)(
     dispatch(document, key, event)
     expect(later).toHaveBeenCalledTimes(2)
     expect(callback).toHaveBeenCalledOnce()
-    blocker.unregister()
+    blocker.dispose()
   },
 )
 
@@ -363,7 +363,7 @@ test.each(['single', 'batch'] as const)(
       binding,
       platform,
     }: {
-      binding: RegisterableHotkey
+      binding: HotkeyStroke
       platform: 'linux' | 'mac'
     }) {
       useHotkey(kind === 'single' ? binding : 'F12', callback, {
@@ -374,7 +374,7 @@ test.each(['single', 'batch'] as const)(
     }
     const { rerender } = renderHook(useRegistration, {
       initialProps: {
-        binding: { key: 'G', mod: true } as RegisterableHotkey,
+        binding: { key: 'G', mod: true } as HotkeyStroke,
         platform: 'linux' as 'linux' | 'mac',
       },
     })

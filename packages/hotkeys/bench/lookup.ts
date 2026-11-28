@@ -1,13 +1,9 @@
 // Synthetic lookup over a 255-binding table and keymap compilation. Run: bun bench/lookup.ts
 // The optional Editor trie comparison loads a checkout linked at packages/editor-core.
-import {
-  buildKeymapTrie,
-  compileKeymap,
-  createDispatcher,
-  keyInputFromKeyboardEvent,
-  trieStep,
-} from '../src'
-import type { KeyboardEventLike, KeymapBinding, KeymapEntry, RawHotkey } from '../src'
+import { buildKeymapTrie, trieStep } from '../src/adapter/index.js'
+import { compileKeymap, createDispatcher, keyInputFromKeyboardEvent } from '../src'
+import type { KeyboardEventLike, KeymapEntry, RawHotkey } from '../src'
+import type { KeymapBinding } from '../src/adapter/index.js'
 
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')
 const NAMED = [

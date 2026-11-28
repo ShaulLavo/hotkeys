@@ -1,14 +1,7 @@
 import { afterEach, expect, expectTypeOf, test, vi } from 'vitest'
 import { createDispatcher, createKeyInput } from '../../src'
-import type {
-  ChordRuntimeOptions,
-  CommandEvent,
-  CommandHandler,
-  Dispatcher,
-  KeyInput,
-  KeymapBinding,
-  KeymapEntry,
-} from '../../src'
+import type { ChordRuntimeOptions, KeymapBinding } from '../../src/adapter/index.js'
+import type { CommandEvent, CommandHandler, Dispatcher, KeyInput, KeymapEntry } from '../../src'
 
 type Source = { readonly key: string }
 

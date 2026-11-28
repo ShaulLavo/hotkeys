@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from 'vitest'
+import { bindingsForInput } from '../../src/dispatch/keymap.js'
 import {
-  bindingsForInput,
   compileKeymap,
   createBrowserDispatcher,
   createHotkeyRegistry,
@@ -9,10 +9,10 @@ import {
 } from '../../src/index.js'
 import type {
   BrowserDispatcher,
-  HotkeyKeys,
+  HotkeyInput,
   HotkeyRegistry,
   KeymapEntry,
-  RegisterableHotkey,
+  HotkeyStroke,
 } from '../../src/index.js'
 
 let dispatcher: BrowserDispatcher | undefined
@@ -239,7 +239,7 @@ test.each(altGraphLatinCases)(
     expect(matchesKeyboardEvent(source, fallback, 'windows')).toBe(false)
     expect(shortcut).not.toHaveBeenCalled()
     expect(source.defaultPrevented).toBe(false)
-    handle.unregister()
+    handle.dispose()
     registry.register({ key: glyph }, printed, { platform: 'windows', eventType })
     expect(key(input, eventType, true).defaultPrevented).toBe(true)
     expect(printed).toHaveBeenCalledOnce()
@@ -284,7 +284,7 @@ test.each(['string', 'raw'] as const)(
   'registry %s punctuation matches on both keydown and keyup',
   (kind) => {
     registry = createHotkeyRegistry()
-    const hotkey: RegisterableHotkey = kind === 'string' ? 'Control+?' : { key: '?', ctrl: true }
+    const hotkey: HotkeyStroke = kind === 'string' ? 'Control+?' : { key: '?', ctrl: true }
     const calls: string[] = []
     registry.register(hotkey, () => void calls.push('down'), { platform: 'linux' })
     registry.register(hotkey, () => void calls.push('up'), {
@@ -304,7 +304,7 @@ test.each(['string', 'raw'] as const)(
   'registry %s sequences use the same punctuation matching',
   (kind) => {
     registry = createHotkeyRegistry()
-    const keys: HotkeyKeys = kind === 'string' ? ['G', '?'] : [{ key: 'G' }, { key: '?' }]
+    const keys: HotkeyInput = kind === 'string' ? ['G', '?'] : [{ key: 'G' }, { key: '?' }]
     const callback = vi.fn()
     registry.register(keys, callback, { platform: 'linux' })
     expect(key({ key: 'g', code: 'KeyG' }).defaultPrevented).toBe(true)

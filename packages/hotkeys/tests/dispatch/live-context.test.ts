@@ -83,7 +83,7 @@ it('refreshes predicates when a pending chord continues', () => {
     .focus()
 
   expect(dispatcher.handleKey(press('k'), null)).toBe(true)
-  expect(dispatcher.pending()).toEqual({ keys: 'Mod+K', candidateCount: 1 })
+  expect(dispatcher.pending()).toEqual({ keys: 'Control+K', candidateCount: 1 })
   canComment = false
   expect(dispatcher.handleKey(press('c'), null)).toBe(true)
 

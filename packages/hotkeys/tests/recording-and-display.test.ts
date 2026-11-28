@@ -6,14 +6,13 @@ import {
   areHotkeysEqual,
   findHotkeyConflicts,
   formatForDisplay,
-  formatHotkey,
   matchesHeldModifiers,
   matchesKeyboardEvent,
-  normalizeRegisterableHotkey,
   parseHotkey,
-  rawHotkeyToParsedHotkey,
-  validateHotkey,
 } from '../src'
+import { formatHotkey } from '../src/format.js'
+import { normalizeRegisterableHotkey, rawHotkeyToParsedHotkey } from '../src/parse.js'
+import { validateHotkey } from '../src/validate.js'
 import type { Hotkey } from '../src'
 
 const instances: Array<HotkeyRecorder | HotkeySequenceRecorder> = []
@@ -37,7 +36,7 @@ function release(key: string, code: string, flags: KeyboardEventInit = {}) {
   document.dispatchEvent(new KeyboardEvent('keyup', { key, code, bubbles: true, ...flags }))
 }
 afterEach(() => {
-  instances.splice(0).forEach((r) => r.destroy())
+  instances.splice(0).forEach((r) => r.dispose())
   window.dispatchEvent(new Event('blur'))
   getHotkeyRegistry().dispose()
   document.body.replaceChildren()
@@ -169,7 +168,7 @@ it('keeps recording after rejection and clears with only onClear', () => {
 it('resolves aliases, disabled state and exclusions', () => {
   const manager = getHotkeyRegistry()
   const handle = manager.register('Control+S', vi.fn(), { platform: 'windows' })
-  expect(manager.registrations.state.get(handle.id)?.hotkey).toBe('Mod+S')
+  expect(manager.registrations.state.get(handle.id)?.hotkey).toBe('Control+S')
   expect(findHotkeyConflicts('Mod+S', { platform: 'windows' })).toHaveLength(1)
   expect(
     findHotkeyConflicts('Mod+S', {

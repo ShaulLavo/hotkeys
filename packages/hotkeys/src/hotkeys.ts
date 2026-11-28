@@ -1,3 +1,4 @@
+import { requireShortcut } from './shortcut.js'
 import { Store } from '@tanstack/store'
 import { createBrowserDispatcher } from './adapters/browser-dispatcher.js'
 import { keyInputFromKeyboardEvent } from './adapters/browser.js'
@@ -5,7 +6,7 @@ import { isRecordingEvent } from './_recording-guard.js'
 import { shouldIgnoreInputEvent } from './_event-target.js'
 import { getDefaultIgnoreInputs, handleConflict, optionsEqual } from './_registration.js'
 import { matchesKeyInput } from './match.js'
-import { isModifierKey, normalizeRegisterableHotkey, parseRegisterableHotkey } from './parse.js'
+import { isModifierKey, normalizeHotkey, parseHotkey } from './parse.js'
 import { detectPlatform } from './platform.js'
 import type { BrowserDispatcher } from './adapters/browser-dispatcher.js'
 import type { FocusNode } from './dispatch/dispatcher.js'
@@ -13,18 +14,19 @@ import type { KeyInput } from './key-input.js'
 import type { KeymapEntry } from './dispatch/keymap.js'
 import type {
   ConflictBehavior,
-  Hotkey,
+  HotkeyInput,
+  Shortcut,
   HotkeyCallback,
   HotkeyMeta,
   ParsedHotkey,
   RawHotkey,
-  RegisterableHotkey,
 } from './hotkey.types.js'
 
 export type { ConflictBehavior }
-export type Target = HTMLElement | Document | Window
+export type HotkeyTarget = HTMLElement | Document | Window
+export type Target = HotkeyTarget
 /** One stroke, or several pressed in turn (`['Mod+K', 'Mod+C']`). */
-export type HotkeyKeys = RegisterableHotkey | readonly RegisterableHotkey[]
+export type HotkeyKeys = HotkeyInput
 
 export interface HotkeyOptions {
   /** How registration or an option update handles conflicting strokes, target, and event type. Defaults to 'warn'. */
@@ -56,7 +58,7 @@ export interface HotkeyRegistrationView {
   readonly target: Target
   readonly triggerCount: number
 }
-export interface HotkeyRegistrationHandle {
+export interface HotkeyRegistration {
   /** Settable, so a component can swap its callback without registering again. */
   callback: HotkeyCallback
   readonly id: string
@@ -72,8 +74,11 @@ export interface HotkeyRegistrationHandle {
    * Uses the same rebinding and reset rules as setOptions. Inactive handles are unchanged.
    */
   replaceOptions: (options: HotkeyOptions) => void
-  unregister: () => void
+  dispose: () => void
+  [Symbol.dispose]: () => void
 }
+export type HotkeyRegistrationHandle = HotkeyRegistration
+
 export type HotkeyRegistry = {
   readonly register: (
     keys: HotkeyKeys,
@@ -87,11 +92,12 @@ export type HotkeyRegistry = {
   /** The dispatcher underneath, for hosts that add focus nodes or read pending chords. */
   readonly dispatcher: BrowserDispatcher
   readonly dispose: () => void
+  readonly [Symbol.dispose]: () => void
 }
 
 type Registration = {
   readonly id: string
-  readonly keys: readonly RegisterableHotkey[]
+  readonly keys: Shortcut
   strokes: readonly RawHotkey[]
   parsed: readonly ParsedHotkey[]
   hotkey: string
@@ -103,6 +109,7 @@ type Registration = {
   release: () => void
   hasFired: boolean
   triggerCount: number
+  view?: HotkeyRegistrationView
 }
 
 let nextId = 0
@@ -112,17 +119,23 @@ let nextId = 0
  * for a key runs first, a callback returning false passes the key on, and multi-stroke keys
  * are chords with Zed's pending rules.
  */
-export function createHotkeyRegistry(
-  options: { readonly document?: Document; readonly timeoutMs?: number } = {},
-): HotkeyRegistry {
+export type HotkeyRegistryOptions = {
+  readonly document?: Document
+  readonly timeoutMs?: number
+  readonly capture?: boolean
+}
+
+export function createHotkeyRegistry(options: HotkeyRegistryOptions = {}): HotkeyRegistry {
   const doc = options.document ?? document
   const entries = new Map<string, Registration>()
   const registrations = new Store<ReadonlyMap<string, HotkeyRegistrationView>>(new Map())
   let dirty = false
+  let disposed = false
   // Listening before the dispatcher does: it swallows the release of a key it claimed.
   doc.addEventListener('keyup', onKeyUp, true)
   const dispatcher = createBrowserDispatcher({
     root: doc,
+    capture: options.capture,
     // Registrations carry explicit modifiers; the dispatcher's own `Mod` is never used.
     platform: detectPlatform(),
     ...(options.timeoutMs !== undefined && { timeoutMs: options.timeoutMs }),
@@ -150,7 +163,7 @@ export function createHotkeyRegistry(
     for (const entry of entries.values()) {
       if (entry.options.enabled === false || entry.options.eventType === 'keyup') continue
       keymap.push({
-        keys: entry.strokes as unknown as readonly [RawHotkey, ...RawHotkey[]],
+        keys: entry.strokes,
         command: entry.id,
         ...(entry.options.preventDefault === false && { preventDefault: false }),
         ...(entry.options.stopPropagation === false && { stopPropagation: false }),
@@ -165,12 +178,12 @@ export function createHotkeyRegistry(
     registrations.setState(() => views)
   }
   function fire(entry: Registration, event: KeyboardEvent) {
-    const hotkey = entry.hotkey as Hotkey
-    const [first] = entry.parsed
+    const { hotkey: shortcut, parsed: strokes } = entry
     entry.hasFired = true
     entry.triggerCount += 1
+    entry.view = undefined
     registrations.setState((previous) => new Map(previous).set(entry.id, view(entry)))
-    return entry.callback(event, { hotkey, parsedHotkey: first! })
+    return entry.callback(event, { shortcut, strokes, stroke: strokes.at(-1)! })
   }
   function accepts(entry: Registration, event: KeyboardEvent): boolean {
     if (isRecordingEvent(event)) return false
@@ -185,38 +198,47 @@ export function createHotkeyRegistry(
   }
   function onKeyUp(event: KeyboardEvent) {
     const input = keyInputFromKeyboardEvent(event)
-    for (const entry of entries.values()) {
-      if (entry.options.eventType === 'keyup') {
-        runKeyUp(entry, event)
-        continue
-      }
-      // A release of the key or of any modifier re-arms a requireReset hotkey.
-      if (entry.hasFired && (isModifierKey(input.key) || releases(entry.parsed.at(-1)!, input)))
-        entry.hasFired = false
+    const releases = Array.from(entries.values()).reverse()
+    for (const entry of releases) resetReleased(entry, input)
+    for (const entry of releases) {
+      if (entries.get(entry.id) !== entry || entry.options.eventType !== 'keyup') continue
+      if (runKeyUp(entry, event)) break
     }
   }
-  function runKeyUp(entry: Registration, event: KeyboardEvent) {
-    if (entry.options.enabled === false || entry.strokes.length !== 1) return
-    const input = { ...keyInputFromKeyboardEvent(event), type: 'keydown' as const }
-    if (!matchesKeyInput(input, entry.parsed[0]!, entry.options.platform)) return
-    if (!accepts(entry, event)) return
+  function resetReleased(entry: Registration, input: KeyInput) {
+    if (entry.options.eventType === 'keyup' || !entry.hasFired) return
+    if (isModifierKey(input.key) || releases(entry.parsed.at(-1)!, input)) entry.hasFired = false
+  }
+  function runKeyUp(entry: Registration, event: KeyboardEvent): boolean {
+    if (entry.options.enabled === false || entry.strokes.length !== 1) return false
+    const input = {
+      ...keyInputFromKeyboardEvent(event, entry.options.platform),
+      type: 'keydown' as const,
+    }
+    if (!matchesKeyInput(input, entry.parsed[0]!, entry.options.platform) || !accepts(entry, event))
+      return false
+    if (fire(entry, event) === false) return false
     if (entry.options.preventDefault !== false) event.preventDefault()
     if (entry.options.stopPropagation !== false) event.stopPropagation()
-    fire(entry, event)
+    return true
   }
   function register(
     keys: HotkeyKeys,
     callback: HotkeyCallback,
     registrationOptions: HotkeyOptions = {},
   ): HotkeyRegistrationHandle {
+    if (disposed) throw new Error('Hotkey registry is disposed')
     const id = `hotkey_${++nextId}`
     const configuredOptions = Object.assign({}, registrationOptions)
     const platform = configuredOptions.platform ?? detectPlatform()
-    const list = snapshotKeys(keys)
+    const list = requireShortcut(keys)
     const binding = resolveBinding(list, platform)
     const target = resolveTarget(configuredOptions.target)
     const resolvedOptions = resolveOptions(configuredOptions, binding.parsed, platform)
-    const existing = findConflict(binding.parsed, target, resolvedOptions.eventType)
+    const existing =
+      configuredOptions.conflictBehavior === 'allow'
+        ? undefined
+        : findConflict(binding.parsed, target, resolvedOptions.eventType)
     if (existing)
       handleConflict(
         existing.id,
@@ -264,7 +286,8 @@ export function createHotkeyRegistry(
       },
       setOptions: (next) => updateOptions(entry, next, false),
       replaceOptions: (next) => updateOptions(entry, next, true),
-      unregister: () => remove(id),
+      dispose: () => remove(id),
+      [Symbol.dispose]: () => remove(id),
     }
   }
   function resolveTarget(target: Target | null | undefined): Target {
@@ -284,13 +307,12 @@ export function createHotkeyRegistry(
     eventType: HotkeyOptions['eventType'],
     except?: Registration,
   ): Registration | undefined {
-    return Array.from(entries.values()).find(
-      (entry) =>
-        entry !== except &&
-        entry.target === target &&
-        (entry.options.eventType ?? 'keydown') === (eventType ?? 'keydown') &&
-        sameStrokes(entry.parsed, parsed),
-    )
+    for (const entry of entries.values()) {
+      if (entry === except || entry.target !== target) continue
+      if ((entry.options.eventType ?? 'keydown') !== (eventType ?? 'keydown')) continue
+      if (sameStrokes(entry.parsed, parsed)) return entry
+    }
+    return undefined
   }
   function updateOptions(entry: Registration, next: HotkeyOptions, replace: boolean) {
     if (entries.get(entry.id) !== entry) return
@@ -309,7 +331,7 @@ export function createHotkeyRegistry(
       targetChanged ||
       eventTypeChanged ||
       (platformChanged && !sameStrokes(entry.parsed, binding.parsed))
-    if (identityChanged) {
+    if (identityChanged && resolved.conflictBehavior !== 'allow') {
       const existing = findConflict(binding.parsed, target, resolved.eventType, entry)
       if (existing)
         handleConflict(
@@ -327,6 +349,7 @@ export function createHotkeyRegistry(
     // Keep caller intent even when its current defaults resolve to the same behavior.
     entry.configuredOptions = configured
     if (!changesView) return
+    entry.view = undefined
     entry.options = resolved
     entry.target = target
     entry.parsed = binding.parsed
@@ -368,48 +391,50 @@ export function createHotkeyRegistry(
     )
     return true
   }
+  function dispose() {
+    if (disposed) return
+    disposed = true
+    if (registries.get(doc) === registry) registries.delete(doc)
+    doc.removeEventListener('keyup', onKeyUp, true)
+    dispatcher.dispose()
+    for (const entry of entries.values()) entry.release()
+    entries.clear()
+    registrations.setState(() => new Map())
+  }
   const registry: HotkeyRegistry = {
     register,
     registrations,
     trigger,
     dispatcher,
-    dispose: () => {
-      if (registries.get(doc) === registry) registries.delete(doc)
-      doc.removeEventListener('keyup', onKeyUp, true)
-      dispatcher.dispose()
-      for (const entry of entries.values()) entry.release()
-      entries.clear()
-      registrations.setState(() => new Map())
-    },
+    dispose,
+    [Symbol.dispose]: dispose,
   }
   return registry
 }
 
 function view(entry: Registration): HotkeyRegistrationView {
-  return {
+  return (entry.view ??= Object.freeze({
     id: entry.id,
     hotkey: entry.hotkey,
     strokes: entry.parsed,
     options: entry.options,
     target: entry.target,
     triggerCount: entry.triggerCount,
-  }
+  }))
 }
 
-function snapshotKeys(keys: HotkeyKeys): readonly RegisterableHotkey[] {
-  const list = (Array.isArray(keys) ? keys : [keys]) as readonly RegisterableHotkey[]
-  return list.map((stroke) => (typeof stroke === 'string' ? stroke : Object.assign({}, stroke)))
-}
-
-function resolveBinding(
-  keys: readonly RegisterableHotkey[],
-  platform: NonNullable<HotkeyOptions['platform']>,
-) {
-  const parsed = keys.map((stroke) => parseRegisterableHotkey(stroke, platform))
+function resolveBinding(keys: Shortcut, platform: NonNullable<HotkeyOptions['platform']>) {
+  const parsed = Object.freeze(
+    keys.map((stroke) => {
+      const value = parseHotkey(stroke, platform)
+      Object.freeze(value.modifiers)
+      return Object.freeze(value)
+    }),
+  )
   return {
     parsed,
     strokes: parsed.map(explicitStroke),
-    hotkey: keys.map((stroke) => normalizeRegisterableHotkey(stroke, platform)).join(' '),
+    hotkey: keys.map((stroke) => normalizeHotkey(stroke, { platform })).join(' '),
   }
 }
 
@@ -418,9 +443,11 @@ function resolveOptions(
   parsed: readonly ParsedHotkey[],
   platform: NonNullable<HotkeyOptions['platform']>,
 ): HotkeyOptions {
-  return Object.assign({}, configured, {
+  return Object.freeze({
+    ...configured,
     platform,
     ignoreInputs: configured.ignoreInputs ?? getDefaultIgnoreInputs(parsed[0]!),
+    ...(configured.meta && { meta: Object.freeze({ ...configured.meta }) }),
   })
 }
 
@@ -476,4 +503,20 @@ export function getHotkeyRegistry(doc: Document = document): HotkeyRegistry {
   let registry = registries.get(doc)
   if (!registry) registries.set(doc, (registry = createHotkeyRegistry({ document: doc })))
   return registry
+}
+
+export function registerHotkey(
+  keys: HotkeyInput,
+  callback: HotkeyCallback,
+  options?: HotkeyOptions,
+): HotkeyRegistration {
+  const target = options?.target
+  const doc = target ? targetDocument(target) : undefined
+  return getHotkeyRegistry(doc ?? undefined).register(keys, callback, options)
+}
+
+function targetDocument(target: HotkeyTarget): Document {
+  if ('document' in target) return target.document
+  if ('defaultView' in target) return target
+  return target.ownerDocument
 }

@@ -42,6 +42,16 @@
       "import": "./dist/react/index.js",
       "default": "./dist/react/index.js"
     },
+    "./terminal": {
+      "types": "./dist/terminal/index.d.ts",
+      "import": "./dist/terminal/index.js",
+      "default": "./dist/terminal/index.js"
+    },
+    "./adapter": {
+      "types": "./dist/adapter/index.d.ts",
+      "import": "./dist/adapter/index.js",
+      "default": "./dist/adapter/index.js"
+    },
     "./package.json": "./package.json"
   },
   "publishConfig": {

@@ -1,6 +1,12 @@
 import { afterEach, expect, test, vi } from 'vitest'
 import { createHotkeyRegistry, detectPlatform } from '../src/index.js'
-import type { HotkeyKeys, HotkeyOptions, HotkeyRegistry, RawHotkey, Target } from '../src/index.js'
+import type {
+  HotkeyInput,
+  HotkeyOptions,
+  HotkeyRegistry,
+  RawHotkey,
+  HotkeyTarget,
+} from '../src/index.js'
 
 let registry: HotkeyRegistry | undefined
 
@@ -61,8 +67,9 @@ test.each(reentrantBindings)(
     try {
       press(document, 's', { ctrlKey: true })
       expect(callback.mock.lastCall?.[1]).toEqual({
-        hotkey: before.hotkey,
-        parsedHotkey: before.strokes[0],
+        shortcut: before.hotkey,
+        strokes: before.strokes,
+        stroke: before.strokes.at(-1),
       })
       const after = hotkeys.registrations.state.get(handle.id)!
       expect(after.options.platform).toBe('mac')
@@ -70,8 +77,9 @@ test.each(reentrantBindings)(
       press(document, 's', { ctrlKey: !adaptive, metaKey: adaptive })
       expect(callback).toHaveBeenCalledTimes(2)
       expect(callback.mock.lastCall?.[1]).toEqual({
-        hotkey: after.hotkey,
-        parsedHotkey: after.strokes[0],
+        shortcut: after.hotkey,
+        strokes: after.strokes,
+        stroke: after.strokes.at(-1),
       })
     } finally {
       subscription.unsubscribe()
@@ -180,7 +188,7 @@ test('removing requireReset allows subsequent repeats', () => {
 
 const platformCases: ReadonlyArray<{
   name: string
-  keys: HotkeyKeys
+  keys: HotkeyInput
   strokes: ReadonlyArray<readonly [string, string]>
 }> = [
   { name: 'string', keys: 'Mod+S', strokes: [['s', 'KeyS']] },
@@ -229,7 +237,7 @@ test.each(platformCases)(
     expect(callback).toHaveBeenCalledOnce()
     for (const [key, code] of strokes) press(document, key, { code, metaKey: true })
     expect(callback).toHaveBeenCalledTimes(2)
-    expect(callback.mock.lastCall?.[1].parsedHotkey).toMatchObject({ meta: true, ctrl: false })
+    expect(callback.mock.lastCall?.[1].stroke).toMatchObject({ meta: true, ctrl: false })
     expect(hotkeys.trigger(handle.id)).toBe(true)
     expect(callback.mock.lastCall?.[0].metaKey).toBe(true)
     expect(hotkeys.registrations.state.get(handle.id)?.triggerCount).toBe(3)
@@ -240,15 +248,15 @@ test('literal Control remains literal when platform-dependent display text chang
   const callback = vi.fn()
   const hotkeys = setup()
   const handle = hotkeys.register('Control+S', callback, { platform: 'linux' })
-  expect(hotkeys.registrations.state.get(handle.id)?.hotkey).toBe('Mod+S')
+  expect(hotkeys.registrations.state.get(handle.id)?.hotkey).toBe('Control+S')
   handle.setOptions({ platform: 'mac' })
   expect(hotkeys.registrations.state.get(handle.id)?.hotkey).toBe('Control+S')
   press(document, 's', { metaKey: true })
   expect(callback).not.toHaveBeenCalled()
   press(document, 's', { ctrlKey: true })
   expect(callback.mock.lastCall?.[1]).toMatchObject({
-    hotkey: 'Control+S',
-    parsedHotkey: { ctrl: true, meta: false },
+    shortcut: 'Control+S',
+    stroke: { ctrl: true, meta: false },
   })
 })
 
@@ -517,7 +525,7 @@ test.each(['setOptions', 'replaceOptions'] as const)(
   (method) => {
     const hotkeys = setup()
     const inactive = hotkeys.register('F8', vi.fn())
-    inactive.unregister()
+    inactive.dispose()
     const callback = vi.fn()
     hotkeys.register(['G', 'H'], callback)
     press(document, 'g')
@@ -536,7 +544,7 @@ test.each(['document', 'window', 'element'] as const)(
     const frame = document.createElement('iframe')
     document.body.append(frame)
     const other = frame.contentDocument!
-    const targets: Record<'document' | 'window' | 'element', Target> = {
+    const targets: Record<'document' | 'window' | 'element', HotkeyTarget> = {
       document: other,
       window: frame.contentWindow!,
       element: other.body,

@@ -51,7 +51,7 @@ try {
           skipLibCheck: true,
           noEmit: true,
           jsx: 'react-jsx',
-          lib: ['ES2022', 'DOM', 'DOM.Iterable'],
+          lib: ['ES2022', 'ESNext.Disposable', 'DOM', 'DOM.Iterable'],
           types: [],
         },
         files,

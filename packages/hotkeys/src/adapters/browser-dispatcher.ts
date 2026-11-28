@@ -1,3 +1,5 @@
+import type { AnyCommands, CommandMap } from '../dispatch/commands.js'
+import type { HostedFocusNode } from '../dispatch/dispatcher.js'
 import { createDispatcher } from '../dispatch/dispatcher.js'
 import { detectPlatform } from '../platform.js'
 import { isInputElement } from '../_event-target.js'
@@ -5,7 +7,10 @@ import { attachKeyListeners, browserKeyEffects, replayTextInput } from './browse
 import type { Dispatcher, DispatcherOptions, FocusNode } from '../dispatch/dispatcher.js'
 import type { KeyResetReason } from './browser-listeners.js'
 
-export type BrowserDispatcherOptions = Omit<DispatcherOptions<KeyboardEvent>, 'effects'> & {
+export type BrowserDispatcherOptions<Commands extends CommandMap = AnyCommands> = Omit<
+  DispatcherOptions<KeyboardEvent, Commands>,
+  'effects'
+> & {
   /** Where idle keys are heard; defaults to the global document. */
   readonly root?: HTMLElement | Document
   /** Hears idle keys before descendant input handlers; defaults to bubbling. */
@@ -19,31 +24,45 @@ export type BrowserKeyObserver = {
   /** Clears host bookkeeping when the dispatcher drops held-key ownership. */
   readonly reset?: (reason: KeyResetReason) => void
 }
-type ElementAttachment = { readonly node: FocusNode<KeyboardEvent>; readonly depth: number }
+type ElementAttachment<Commands extends CommandMap> = {
+  readonly node: FocusNode<KeyboardEvent, Commands>
+  readonly depth: number
+}
 type ObserverRegistration = { readonly observer: BrowserKeyObserver }
-export type BrowserDispatcher = Dispatcher<KeyboardEvent> & {
+export type BrowserDispatcher<Commands extends CommandMap = AnyCommands> = Dispatcher<
+  KeyboardEvent,
+  Commands
+> & {
   /**
    * Ties a node to an element: a key focuses the closest attached element's deepest node.
    * Later attachments win equal-depth ties. Returns the tie's removal.
    */
-  readonly attachElement: (node: FocusNode<KeyboardEvent>, element: Element) => () => void
+  readonly attachElement: (node: HostedFocusNode, element: Element) => () => void
   /** Finds the closest attached element's node for a captured command origin. */
-  readonly nodeForElement: (element: Element) => FocusNode<KeyboardEvent> | null
+  readonly nodeForElement: (element: Element) => FocusNode<KeyboardEvent, Commands> | null
   /** Offers an event before DOM dispatch reaches the root, for hosts that forward keys (terminals). */
   readonly claimKeybinding: (event: KeyboardEvent) => boolean
   /** Observes the existing key pipeline; returns the observer's removal. */
+  readonly asHosted: () => HostedBrowserDispatcher
   readonly observeKeys: (observer: BrowserKeyObserver) => () => void
 }
 
+export type HostedBrowserDispatcher = Pick<
+  BrowserDispatcher,
+  'createNode' | 'attachElement' | 'claimKeybinding' | 'observeKeys' | 'contextStack'
+> & { readonly nodeForElement: (element: Element) => HostedFocusNode | null }
+
 /** A dispatcher whose focus path follows DOM containment of attached elements. */
-export function createBrowserDispatcher(options: BrowserDispatcherOptions = {}): BrowserDispatcher {
+export function createBrowserDispatcher<Commands extends CommandMap = AnyCommands>(
+  options: BrowserDispatcherOptions<Commands> = {},
+): BrowserDispatcher<Commands> {
   const root = options.root ?? globalThis.document
   const platform = options.platform ?? detectPlatform()
-  const nodes = new Map<Element, Set<ElementAttachment>>()
+  const nodes = new Map<Element, Set<ElementAttachment<Commands>>>()
   const observers = new Set<ObserverRegistration>()
   let disposed = false
   const doc = 'defaultView' in root ? root : root.ownerDocument
-  const dispatcher = createDispatcher<KeyboardEvent>({
+  const dispatcher = createDispatcher<KeyboardEvent, Commands>({
     acceptsTextInput: (event) => isInputElement(event.target),
     replay: replayTextInput,
     currentFocus: () => doc.activeElement,
@@ -74,11 +93,12 @@ export function createBrowserDispatcher(options: BrowserDispatcherOptions = {}):
     }
     dispatcher.focus(null)
   }
-  function attachElement(node: FocusNode<KeyboardEvent>, element: Element) {
+  function attachElement(node: HostedFocusNode, element: Element) {
+    if (!dispatcher.hasNode(node)) return () => {}
     let depth = 0
     for (let parent = node.parent; parent; parent = parent.parent) depth += 1
-    const attachment = { node, depth }
-    const attached = nodes.get(element) ?? new Set<ElementAttachment>()
+    const attachment = { node: node as FocusNode<KeyboardEvent, Commands>, depth }
+    const attached = nodes.get(element) ?? new Set<ElementAttachment<Commands>>()
     nodes.set(element, attached)
     attached.add(attachment)
     return () => {
@@ -87,7 +107,7 @@ export function createBrowserDispatcher(options: BrowserDispatcherOptions = {}):
     }
   }
   function attachedNode(element: Element) {
-    let selected: ElementAttachment | undefined
+    let selected: ElementAttachment<Commands> | undefined
     for (const attachment of nodes.get(element) ?? []) {
       if (!dispatcher.hasNode(attachment.node)) continue
       if (!selected || attachment.depth >= selected.depth) selected = attachment
@@ -121,6 +141,24 @@ export function createBrowserDispatcher(options: BrowserDispatcherOptions = {}):
   function reset(reason: KeyResetReason) {
     notifyObservers((observer) => observer.reset?.(reason))
   }
+  const hosted: HostedBrowserDispatcher = {
+    // Hosted registrations supply their own runtime arg checks and share the same focus tree.
+    createNode: dispatcher.createNode as unknown as HostedBrowserDispatcher['createNode'],
+    attachElement,
+    nodeForElement,
+    claimKeybinding: listeners.claim,
+    observeKeys,
+    contextStack: dispatcher.contextStack,
+  }
+  function dispose() {
+    if (disposed) return
+    disposed = true
+    dispatcher.dispose()
+    listeners.dispose()
+    reset('dispose')
+    observers.clear()
+    nodes.clear()
+  }
   return {
     ...dispatcher,
     attachElement,
@@ -131,14 +169,8 @@ export function createBrowserDispatcher(options: BrowserDispatcherOptions = {}):
       dispatcher.releaseAll()
       reset('releaseAll')
     },
-    dispose: () => {
-      if (disposed) return
-      disposed = true
-      dispatcher.dispose()
-      listeners.dispose()
-      reset('dispose')
-      observers.clear()
-      nodes.clear()
-    },
+    asHosted: () => hosted,
+    dispose,
+    [Symbol.dispose]: dispose,
   }
 }

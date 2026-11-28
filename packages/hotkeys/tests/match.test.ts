@@ -811,8 +811,9 @@ describe('createHotkeyHandler', () => {
     handler(event)
 
     expect(callback).toHaveBeenCalledWith(event, {
-      hotkey: 'Mod+S',
-      parsedHotkey: expect.objectContaining({
+      shortcut: 'Mod+S',
+      strokes: [expect.objectContaining({ key: 'S', meta: true })],
+      stroke: expect.objectContaining({
         key: 'S',
         meta: true,
       }),
@@ -897,8 +898,9 @@ describe('createHotkeyHandler', () => {
     handler(event)
 
     expect(callback).toHaveBeenCalledWith(event, {
-      hotkey: 'Meta+S',
-      parsedHotkey: parsed,
+      shortcut: 'Meta+S',
+      stroke: parsed,
+      strokes: [parsed],
     })
   })
 })
@@ -921,7 +923,7 @@ describe('createMultiHotkeyHandler', () => {
     expect(saveHandler).toHaveBeenCalledWith(
       saveEvent,
       expect.objectContaining({
-        hotkey: 'Mod+S',
+        shortcut: 'Mod+S',
       }),
     )
     expect(undoHandler).not.toHaveBeenCalled()
@@ -933,7 +935,7 @@ describe('createMultiHotkeyHandler', () => {
     expect(undoHandler).toHaveBeenCalledWith(
       undoEvent,
       expect.objectContaining({
-        hotkey: 'Mod+Z',
+        shortcut: 'Mod+Z',
       }),
     )
     expect(saveHandler).not.toHaveBeenCalled()

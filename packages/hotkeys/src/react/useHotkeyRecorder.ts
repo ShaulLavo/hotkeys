@@ -73,7 +73,7 @@ export function useHotkeyRecorder(options: HotkeyRecorderOptions): ReactHotkeyRe
   const isRecording = useSelector(recorder.store, (state) => state.isRecording)
   const recordedHotkey = useSelector(recorder.store, (state) => state.recordedHotkey)
 
-  useEffect(() => () => recorder.destroy(), [recorder])
+  useEffect(() => () => recorder.dispose(), [recorder])
 
   const startRecording = useCallback(() => recorder.start(), [recorder])
   const stopRecording = useCallback(() => recorder.stop(), [recorder])

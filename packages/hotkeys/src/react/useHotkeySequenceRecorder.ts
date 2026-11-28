@@ -3,15 +3,15 @@ import { useSelector } from '@tanstack/react-store'
 import { HotkeySequenceRecorder } from '@shaulavo/hotkeys'
 import { useDefaultHotkeysOptions } from './HotkeysProvider.js'
 import { useIsomorphicLayoutEffect } from './utils.js'
-import type { HotkeySequence, HotkeySequenceRecorderOptions } from '@shaulavo/hotkeys'
+import type { Hotkey, HotkeySequenceRecorderOptions } from '@shaulavo/hotkeys'
 
 export interface ReactHotkeySequenceRecorder {
   /** Whether recording is currently active */
   isRecording: boolean
   /** Chords captured in the current session */
-  steps: HotkeySequence
+  steps: Hotkey[]
   /** Last committed sequence */
-  recordedSequence: HotkeySequence | null
+  recordedSequence: Hotkey[] | null
   startRecording: () => void
   stopRecording: () => void
   cancelRecording: () => void
@@ -44,7 +44,7 @@ export function useHotkeySequenceRecorder(
   const steps = useSelector(recorder.store, (state) => state.steps)
   const recordedSequence = useSelector(recorder.store, (state) => state.recordedSequence)
 
-  useEffect(() => () => recorder.destroy(), [recorder])
+  useEffect(() => () => recorder.dispose(), [recorder])
 
   const startRecording = useCallback(() => recorder.start(), [recorder])
   const stopRecording = useCallback(() => recorder.stop(), [recorder])

@@ -233,7 +233,7 @@ describe('render and commit boundaries', () => {
       new KeyboardEvent('keydown', { key: 'Shift', code: 'ShiftRight', bubbles: true }),
     )
     expect(tracker.getHeldKeys()).toEqual(['Shift'])
-    external.unregister()
+    external.dispose()
   })
 
   it('keeps committed callbacks, enabled state and attached refs correct through StrictMode cleanup', () => {

@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from 'vitest'
 import { createHotkeyRegistry } from '../src/index.js'
-import type { HotkeyRegistrationHandle, HotkeyRegistry } from '../src/index.js'
+import type { HotkeyRegistration, HotkeyRegistry } from '../src/index.js'
 
 let registry: HotkeyRegistry | undefined
 const subscriptions: Array<{ unsubscribe: () => void }> = []
@@ -124,7 +124,7 @@ test('cleanup preserves a nested independent registration created by the observe
   const failure = new Error('outer observer failed')
   const failedCallback = vi.fn()
   const nestedCallback = vi.fn()
-  let nested: HotkeyRegistrationHandle | undefined
+  let nested: HotkeyRegistration | undefined
   let entered = false
   const observer = subscribe(() => {
     if (entered) return
@@ -148,7 +148,7 @@ test('cleanup cannot remove a nested registration that replaced the failed acqui
   const failure = new Error('outer observer failed')
   const failedCallback = vi.fn()
   const nestedCallback = vi.fn()
-  let nested: HotkeyRegistrationHandle | undefined
+  let nested: HotkeyRegistration | undefined
   let entered = false
   const observer = subscribe(() => {
     if (entered) return

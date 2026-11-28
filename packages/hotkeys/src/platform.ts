@@ -15,7 +15,9 @@ import type { CanonicalModifier } from './key.types.js'
  * const modifier = resolveModifier('Mod', platform) // 'Meta' on Mac, 'Control' elsewhere
  * ```
  */
-export function detectPlatform(): 'mac' | 'windows' | 'linux' {
+export type Platform = 'mac' | 'windows' | 'linux'
+
+export function detectPlatform(): Platform {
   if (typeof navigator === 'undefined') {
     return 'linux' // Default for SSR
   }
@@ -57,7 +59,7 @@ export function detectPlatform(): 'mac' | 'windows' | 'linux' {
  */
 export function resolveModifier(
   modifier: CanonicalModifier | 'Mod',
-  platform: 'mac' | 'windows' | 'linux' = detectPlatform(),
+  platform: Platform = detectPlatform(),
 ): CanonicalModifier {
   if (modifier === 'Mod') {
     return platform === 'mac' ? 'Meta' : 'Control'

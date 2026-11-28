@@ -201,19 +201,29 @@ export type RawHotkey =
  * A hotkey that can be passed to `HotkeyRegistry.register()` and `useHotkey()`.
  * Either a type-safe string (`Hotkey`) or a raw object (`RawHotkey`).
  */
-export type RegisterableHotkey = Hotkey | RawHotkey
+export type HotkeyStroke = Hotkey | RawHotkey
+export type HotkeySequence = readonly HotkeyStroke[]
+export type HotkeyInput = HotkeyStroke | HotkeySequence
+export type ValidatedStroke = Readonly<Required<RawModifiers>> &
+  (
+    | { readonly key: string; readonly code?: never }
+    | { readonly code: string; readonly key?: never }
+  )
+
+declare const validated: unique symbol
+export type Shortcut = readonly [ValidatedStroke, ...ValidatedStroke[]] & {
+  readonly [validated]: true
+}
+
+export type RegisterableHotkey = HotkeyStroke
 
 /**
  * Context passed to hotkey callbacks along with the keyboard event.
  */
 export interface HotkeyCallbackContext {
-  /**
-   * Registry callbacks receive normalized binding text, with sequence strokes joined by spaces.
-   * Standalone match handlers preserve supplied hotkey strings.
-   */
-  hotkey: Hotkey
-  /** The parsed stroke; registry sequences expose their first stroke here. */
-  parsedHotkey: ParsedHotkey
+  readonly shortcut: string
+  readonly strokes: readonly ParsedHotkey[]
+  readonly stroke: ParsedHotkey
 }
 
 /**

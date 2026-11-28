@@ -1,5 +1,5 @@
 import { expectTypeOf, it } from 'vitest'
-import type { Hotkey, PhysicalKey, PhysicalKeyCode, RegisterableHotkey } from '../src'
+import type { Hotkey, PhysicalKey, PhysicalKeyCode, HotkeyStroke } from '../src'
 
 it('accepts finite physical code families inside brackets', () => {
   expectTypeOf<
@@ -16,7 +16,7 @@ it('accepts finite physical code families inside brackets', () => {
     | '[AudioVolumeUp]'
   >().toExtend<PhysicalKey>()
   expectTypeOf<'Mod+[KeyS]' | 'Control+Alt+Shift+Meta+[Enter]'>().toExtend<Hotkey>()
-  expectTypeOf<'Mod+[Digit1]'>().toExtend<RegisterableHotkey>()
+  expectTypeOf<'Mod+[Digit1]'>().toExtend<HotkeyStroke>()
 })
 
 it('rejects misspelled, unbracketed, and unidentified physical tokens', () => {
@@ -33,7 +33,7 @@ it('rejects misspelled, unbracketed, and unidentified physical tokens', () => {
     | 'KeyS'
   expectTypeOf<Extract<InvalidToken, PhysicalKey>>().toBeNever()
   expectTypeOf<Extract<`Mod+${InvalidToken}`, Hotkey>>().toBeNever()
-  expectTypeOf<Extract<`Mod+${InvalidToken}`, RegisterableHotkey>>().toBeNever()
+  expectTypeOf<Extract<`Mod+${InvalidToken}`, HotkeyStroke>>().toBeNever()
   expectTypeOf<string>().not.toExtend<PhysicalKeyCode>()
   expectTypeOf<`[${string}]`>().not.toExtend<PhysicalKey>()
 })

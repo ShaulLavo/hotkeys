@@ -14,7 +14,7 @@
     "build": "turbo run build --filter='@shaulavo/*'",
     "typecheck": "turbo run typecheck --filter='@shaulavo/*' && bun run docs:check",
     "docs:check": "bun scripts/check-samples.mjs",
-    "lint": "bun scripts/check-source-language.ts && oxlint .",
+    "lint": "bun scripts/check-source-language.ts && oxlint . && unknot packages/hotkeys/src",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
     "test": "turbo run test --filter='@shaulavo/*'",
@@ -28,7 +28,8 @@
     "oxfmt": "0.70.0",
     "oxlint": "1.85.0",
     "turbo": "2.11.5",
-    "typescript": "7.0.2"
+    "typescript": "7.0.2",
+    "unknot": "0.1.2"
   },
   "packageManager": "bun@1.4.4",
   "patchedDependencies": {

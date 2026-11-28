@@ -1,5 +1,6 @@
 import { act, cleanup, renderHook } from '@testing-library/react'
-import { formatHotkeySequence, getHotkeyRegistry } from '../../src/index.js'
+import { formatHotkeySequence } from '../../src/format.js'
+import { getHotkeyRegistry } from '../../src/index.js'
 import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
 import { useHotkeySequence } from '../../src/react/useHotkeySequence.js'
 import { useHotkeySequences } from '../../src/react/useHotkeySequences.js'
@@ -51,12 +52,14 @@ describe('readonly registration inputs', () => {
 
   it('continues to accept mutable arrays and preserves mutable recorder outputs', () => {
     const callback = vi.fn()
-    const sequence: HotkeySequence = ['G', 'G']
+    const sequence: Hotkey[] = ['G', 'G']
     const hotkeys: Array<UseHotkeyDefinition> = [{ hotkey: 'Escape', callback }]
     const sequences: Array<UseHotkeySequenceDefinition> = [{ sequence: ['D'], callback }]
-    sequences[0]!.sequence.push('D')
+    const mutableSequence: Hotkey[] = ['D']
+    mutableSequence.push('D')
+    sequences[0]!.sequence = mutableSequence
 
-    expectTypeOf<HotkeySequence>().toEqualTypeOf<Array<Hotkey>>()
+    expectTypeOf<HotkeySequence>().toEqualTypeOf<readonly import('../../src').HotkeyStroke[]>()
     expectTypeOf<ReactHotkeySequenceRecorder['steps']>().toEqualTypeOf<Array<Hotkey>>()
     expectTypeOf<
       ReactHotkeySequenceRecorder['recordedSequence']

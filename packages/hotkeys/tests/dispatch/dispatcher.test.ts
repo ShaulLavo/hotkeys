@@ -205,7 +205,7 @@ describe('Zed pending input', () => {
     ])
     dispatcher.handleKey(press('ctrl-b'), null)
     vi.advanceTimersByTime(10_000)
-    expect(dispatcher.pending()?.keys).toBe('Mod+B')
+    expect(dispatcher.pending()?.keys).toBe('Control+B')
     dispatcher.handleKey(press('h'), null)
     expect(counts.action).toBe(1)
     const node = dispatcher.createNode({ context: 'ContextB' })

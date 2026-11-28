@@ -6,7 +6,7 @@ type RecorderOptions = HotkeyRecorderOptions & HotkeySequenceRecorderOptions
 const recorders: Array<HotkeyRecorder | HotkeySequenceRecorder> = []
 
 afterEach(() => {
-  for (const recorder of recorders.splice(0)) recorder.destroy()
+  for (const recorder of recorders.splice(0)) recorder.dispose()
   vi.useRealTimers()
   document.body.replaceChildren()
 })

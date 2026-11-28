@@ -1,14 +1,14 @@
 import { isRef } from './utils.js'
-import { parseRegisterableHotkey } from '@shaulavo/hotkeys'
-import type { RegisterableHotkey, Target } from '@shaulavo/hotkeys'
+import { parseHotkey } from '@shaulavo/hotkeys'
+import type { HotkeyStroke, HotkeyTarget } from '@shaulavo/hotkeys'
 import type { RefObject } from 'react'
 
-export function registrationIdentity(strokes: readonly RegisterableHotkey[]): string {
+export function registrationIdentity(strokes: readonly HotkeyStroke[]): string {
   // Both modifier platforms distinguish symbolic Mod from literals while normalizing aliases.
   return JSON.stringify(
     strokes.map((stroke) => {
-      const control = parseRegisterableHotkey(stroke, 'linux')
-      const meta = parseRegisterableHotkey(stroke, 'mac')
+      const control = parseHotkey(stroke, 'linux')
+      const meta = parseHotkey(stroke, 'mac')
       return [
         control.key ?? null,
         control.code ?? null,
@@ -24,8 +24,8 @@ export function registrationIdentity(strokes: readonly RegisterableHotkey[]): st
 }
 
 export function resolveTarget(
-  target: Target | RefObject<HTMLElement | null> | null | undefined,
-): Target | null {
+  target: HotkeyTarget | RefObject<HTMLElement | null> | null | undefined,
+): HotkeyTarget | null {
   return isRef(target)
     ? target.current
     : (target ?? (typeof document !== 'undefined' ? document : null))

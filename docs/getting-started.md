@@ -1,17 +1,26 @@
 # Get started
 
-Keyboard state, shortcuts, and focus-aware keymaps for browser and terminal apps, with optional React hooks.
+Install `@shaulavo/hotkeys` from npm or a [local checkout](development.md#install):
 
-Install the packages from [commit-pinned release tarballs](development.md#install).
+```sh
+bun add @shaulavo/hotkeys
+```
 
-## One shortcut, two commands
+To use `@shaulavo/hotkeys/react`, also install `react`, `react-dom`, and `@tanstack/react-store`.
 
-`Mod+B` can toggle bold styling in an editor and toggle a sidebar when the workspace has focus. `Mod` is Command on macOS and Control elsewhere.
+## Route one shortcut by focus
 
-Run this in a browser after `document.body` exists. The example creates its own focusable workspace and editor, plus a sidebar.
+In this example, `Mod+B` toggles a sidebar when the workspace has focus and toggles bold text when the editor has focus. `Mod` means Command on macOS and Control on Windows and Linux.
+
+Run this code in a browser after `document.body` exists. It builds a focusable workspace, a textarea editor, and a sidebar, then binds a typed command map to them.
 
 ```ts
 import { createBrowserDispatcher } from '@shaulavo/hotkeys'
+
+type WorkspaceCommands = {
+  'sidebar.toggle': void
+  'text.bold': void
+}
 
 function mountWorkspace(): () => void {
   const workspaceElement = document.createElement('section')
@@ -25,7 +34,7 @@ function mountWorkspace(): () => void {
   workspaceElement.append(editorElement, sidebarElement)
   document.body.append(workspaceElement)
 
-  const keys = createBrowserDispatcher({
+  const keys = createBrowserDispatcher<WorkspaceCommands>({
     root: workspaceElement,
     keymap: [
       { keys: 'Mod+B', command: 'sidebar.toggle', context: 'Workspace' },
@@ -64,32 +73,59 @@ const cleanup = mountWorkspace()
 // Call cleanup() when the view unmounts.
 ```
 
-Press `Mod+B` to toggle the sidebar, then Tab into the editor and press it again to toggle the editor's text weight. Shift+Tab returns to the workspace. The dispatcher resolves the same key against the focused node's context. See [contexts](../packages/hotkeys/docs/concepts.md#the-focus-tree), [chords](../packages/hotkeys/docs/keymaps.md#chords), and [user overrides](../packages/hotkeys/docs/keymaps.md#removing-bindings) for the resolution rules.
+Press `Mod+B` to hide or show the sidebar. Press Tab to move focus into the editor, then press `Mod+B` again to toggle bold text. Press Shift+Tab to return to the workspace.
 
-## Choose an API by job
+The dispatcher reads the active focus path and evaluates each binding's `context` predicate against it. See [the focus tree](../packages/hotkeys/docs/concepts.md#the-focus-tree), [chords](../packages/hotkeys/docs/keymaps.md#chords), and [removing bindings](../packages/hotkeys/docs/keymaps.md#removing-bindings) for the resolution rules.
 
-| Job                  | APIs                                                                                                                          | Guide                                                                 |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| Read keyboard state  | `useHeldKeys`, `useHeldKeyCodes`, `useKeyHold`, `useHotkeyHint`                                                               | [Held state and hints](overview.md#read-keyboard-state)               |
-| Register shortcuts   | `useHotkey` for one stroke, `useHotkeySequence` for ordered steps; `useHotkeys` and `useHotkeySequences` for separate batches | [Registration and lifecycle](overview.md#register-shortcuts)          |
-| Build editor keymaps | `createBrowserDispatcher` for DOM focus, `createDispatcher` for a host-supplied focus tree                                    | [Commands, contexts, and overrides](overview.md#build-editor-keymaps) |
+## Register a single shortcut
 
-The React state hooks observe held keys. `useKeyHold('Shift')` stays true when another key is also pressed. A shortcut sequence matches ordered presses for one binding; a batch registers several independent bindings. See the [React package](../packages/react-hotkeys/README.md) for installation and a component example.
-
-## Register a simple shortcut
-
-For a callback while a view is mounted, use the document registry and keep its cleanup handle:
+When a shortcut does not depend on a focus tree, call `registerHotkey` on the shared document registry. Keep the returned handle and call `dispose()` during teardown.
 
 ```ts
-import { getHotkeyRegistry } from '@shaulavo/hotkeys'
+import { registerHotkey } from '@shaulavo/hotkeys'
 
 function mountShortcuts(onSave: () => void): () => void {
-  const save = getHotkeyRegistry().register('Mod+S', onSave)
-  return () => save.unregister()
+  const save = registerHotkey('Mod+S', onSave)
+  return () => save.dispose()
 }
 
 const cleanup = mountShortcuts(() => console.log('Save requested'))
 // Call cleanup() when the view unmounts.
 ```
 
-Use a dispatcher when the same key needs different commands by focused context. The registry is the shared registration layer for a document; a view owns and disposes any dispatcher it creates.
+`HotkeyRegistration`, `HotkeyRegistry`, dispatchers, recorders, and `KeyStateTracker` also implement `Symbol.dispose` for `using` declarations.
+
+## Validate and format user bindings
+
+User settings often arrive as unvalidated strings. Call `parseShortcut` to validate the string and narrow it to a `Shortcut` that `registerHotkey`, `normalizeHotkey`, and `formatForDisplay` accept without type casts.
+
+```ts
+import { formatForDisplay, normalizeHotkey, parseShortcut, registerHotkey } from '@shaulavo/hotkeys'
+
+function bindUserShortcut(input: string, onSave: () => void): string | null {
+  const parsed = parseShortcut(input)
+  if (!parsed.ok) return null
+
+  const registration = registerHotkey(parsed.value, onSave)
+  const stored = normalizeHotkey(parsed.value)
+  const label = formatForDisplay(parsed.value)
+  registration.dispose()
+  return `${stored} (${label})`
+}
+
+bindUserShortcut('Mod+S', () => console.log('Save'))
+```
+
+`normalizeHotkey` defaults to `mode: 'symbolic'`, so literal `Control` and `Meta` keep their meaning and `Mod` stays `Mod`. Pass `{ mode: 'resolved', platform }` to resolve `Mod` for a specific platform, or `{ mode: 'adaptive', platform }` to fold a platform's primary modifier into `Mod`.
+
+## Choose an entrypoint by job
+
+| Job                        | Entrypoint                   | Key APIs                                                                                       | Guide                                                                              |
+| -------------------------- | ---------------------------- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Route commands by focus    | `@shaulavo/hotkeys`          | `createBrowserDispatcher`, `createDispatcher`, `explainKeymap`                                 | [Build editor keymaps](overview.md#build-editor-keymaps)                           |
+| Register document bindings | `@shaulavo/hotkeys`          | `registerHotkey`, `createHotkeyRegistry`, `getHotkeyRegistry`                                  | [Register shortcuts](overview.md#register-shortcuts)                               |
+| Parse, validate, format    | `@shaulavo/hotkeys`          | `parseShortcut`, `parseHotkey`, `normalizeHotkey`, `formatForDisplay`, `areHotkeysEqual`       | [Parse, match, and format](../packages/hotkeys/docs/api.md#parse-match-and-format) |
+| Use React hooks            | `@shaulavo/hotkeys/react`    | `HotkeysProvider`, `useHotkey`, `useHotkeys`, `useHotkeySequence`, `useHotkeySequences`        | [React API](../packages/hotkeys/docs/api.md#react)                                 |
+| Read held keyboard state   | `@shaulavo/hotkeys/react`    | `useHeldKeys`, `useHeldKeyCodes`, `useKeyHold`, `useHotkeyHint`                                | [Read keyboard state](overview.md#read-keyboard-state)                             |
+| Handle terminal input      | `@shaulavo/hotkeys/terminal` | `createTerminalDispatcher`, `keyInputFromTerminalKey`, `terminalKeyEffects`                    | [Terminals](../packages/hotkeys/docs/keymaps.md#terminals)                         |
+| Build a custom host        | `@shaulavo/hotkeys/adapter`  | `createChordRuntime`, `buildKeymapTrie`, `trieStep`, `resolveKeymapNode`, `attachKeyListeners` | [Adapter API](../packages/hotkeys/docs/api.md#adapter)                             |

@@ -13,7 +13,7 @@ import type {
 } from './recorder-options.js'
 import type { Hotkey } from './hotkey.types.js'
 
-export type HotkeySequence = Array<Hotkey>
+export type RecordedSequence = Array<Hotkey>
 
 /**
  * How the user can commit a recorded sequence from the keyboard.
@@ -29,9 +29,9 @@ export interface HotkeySequenceRecorderState {
   /** Whether recording is currently active */
   isRecording: boolean
   /** Chords captured so far in the current recording session */
-  steps: HotkeySequence
+  steps: RecordedSequence
   /** The last successfully committed sequence, or null if none / after starting a new session */
-  recordedSequence: HotkeySequence | null
+  recordedSequence: RecordedSequence | null
 }
 
 /**
@@ -40,11 +40,11 @@ export interface HotkeySequenceRecorderState {
 export interface HotkeySequenceRecorderOptions extends RecorderOptions {
   /** Validate the completed sequence. Rejection preserves the steps for editing. */
   validate?: (
-    sequence: HotkeySequence,
+    sequence: RecordedSequence,
     context: HotkeySequenceRecorderValidationContext,
   ) => boolean | string
   /** Callback when a sequence is successfully recorded */
-  onRecord: (sequence: HotkeySequence) => void
+  onRecord: (sequence: RecordedSequence) => void
   /** Optional callback when recording is cancelled (Escape pressed) */
   onCancel?: () => void
   /** Optional callback when the sequence is cleared (Backspace/Delete with no steps) */
@@ -167,7 +167,7 @@ export class HotkeySequenceRecorder {
   }
 
   /** Publishes edited steps while preserving the remaining recorder state. */
-  #patchSteps(updater: (prev: HotkeySequence) => HotkeySequence): void {
+  #patchSteps(updater: (prev: RecordedSequence) => RecordedSequence): void {
     this.store.setState((s) => ({
       ...s,
       steps: updater(s.steps),
@@ -259,7 +259,12 @@ export class HotkeySequenceRecorder {
         this.#options.onReject?.(rejection)
         return
       }
-      const finalHotkey = hotkeyChordFromKeydown(event, platform, this.#options.recordBy)
+      const finalHotkey = hotkeyChordFromKeydown(
+        event,
+        platform,
+        this.#options.recordBy,
+        this.#options.modifierMode,
+      )
       if (finalHotkey === null) {
         return
       }
@@ -378,7 +383,11 @@ export class HotkeySequenceRecorder {
     document.removeEventListener('keydown', handler, true)
   }
 
-  destroy(): void {
+  [Symbol.dispose](): void {
+    this.dispose()
+  }
+
+  dispose(): void {
     this.stop()
   }
 }

@@ -6,19 +6,19 @@ import type { UseHotkeyOptions } from './useHotkey.js'
 import type {
   HotkeyCallback,
   HotkeyOptions,
-  HotkeyRegistrationHandle,
-  RegisterableHotkey,
+  HotkeyRegistration,
+  HotkeyStroke,
 } from '@shaulavo/hotkeys'
 
 type BatchDefinition = {
-  keys: readonly RegisterableHotkey[]
+  keys: readonly HotkeyStroke[]
   callback: HotkeyCallback
   options?: UseHotkeyOptions
 }
 
 type RegistrationRow = {
   registrationKey: string
-  keys: readonly RegisterableHotkey[]
+  keys: readonly HotkeyStroke[]
   callback: HotkeyCallback
   options: HotkeyOptions
 }
@@ -47,13 +47,13 @@ function planRegistrations(
   return rows
 }
 
-function releaseRegistrations(registrations: Map<string, HotkeyRegistrationHandle>): void {
+function releaseRegistrations(registrations: Map<string, HotkeyRegistration>): void {
   const handles = Array.from(registrations.values())
   registrations.clear()
   let failure: { error: unknown } | undefined
   for (const handle of handles) {
     try {
-      if (handle.isActive) handle.unregister()
+      if (handle.isActive) handle.dispose()
     } catch (error) {
       failure ??= { error }
     }
@@ -62,13 +62,13 @@ function releaseRegistrations(registrations: Map<string, HotkeyRegistrationHandl
 }
 
 function reconcileRegistrations(
-  registrations: Map<string, HotkeyRegistrationHandle>,
+  registrations: Map<string, HotkeyRegistration>,
   rows: readonly RegistrationRow[],
 ): void {
   const nextKeys = new Set(rows.map((row) => row.registrationKey))
   for (const [key, handle] of registrations) {
     if (nextKeys.has(key)) continue
-    if (handle.isActive) handle.unregister()
+    if (handle.isActive) handle.dispose()
     registrations.delete(key)
   }
 
@@ -91,7 +91,7 @@ export function useBatchRegistrations(
   commonOptions: UseHotkeyOptions,
   defaultOptions: UseHotkeyOptions | undefined,
 ): void {
-  const registrationsRef = useRef(new Map<string, HotkeyRegistrationHandle>())
+  const registrationsRef = useRef(new Map<string, HotkeyRegistration>())
   const definitionsRef = useRef(definitions)
   const commonOptionsRef = useRef(commonOptions)
   const defaultOptionsRef = useRef(defaultOptions)

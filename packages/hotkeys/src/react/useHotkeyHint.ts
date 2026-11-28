@@ -1,6 +1,6 @@
 import { matchesHeldModifiers } from '@shaulavo/hotkeys'
 import { useKeyState } from './_use-key-state.js'
-import type { HeldModifierOptions, RegisterableHotkey } from '@shaulavo/hotkeys'
+import type { HeldModifierOptions, HotkeyStroke } from '@shaulavo/hotkeys'
 
 /**
  * Returns a boolean indicating whether held modifiers reveal this shortcut.
@@ -9,9 +9,6 @@ import type { HeldModifierOptions, RegisterableHotkey } from '@shaulavo/hotkeys'
  * every modifier. Combine with the action's enabled state before showing a badge.
  * This helper does not register a shortcut or check whether its target is focused.
  */
-export function useHotkeyHint(
-  hotkey: RegisterableHotkey,
-  options: HeldModifierOptions = {},
-): boolean {
+export function useHotkeyHint(hotkey: HotkeyStroke, options: HeldModifierOptions = {}): boolean {
   return useKeyState((state) => matchesHeldModifiers(hotkey, state.heldKeys, options))
 }

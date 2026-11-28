@@ -1,16 +1,11 @@
 import { expect, expectTypeOf, it } from 'vitest'
-import {
-  ALL_KEYS,
-  FUNCTION_KEYS,
-  formatForDisplay,
-  matchesKeyboardEvent,
-  normalizeKeyName,
-  parseHotkey,
-  validateHotkey,
-} from '../src'
+import { ALL_KEYS, FUNCTION_KEYS } from '../src/constants.js'
+import { formatForDisplay, matchesKeyboardEvent, normalizeKeyName, parseHotkey } from '../src'
+import { validateHotkey } from '../src/validate.js'
 import { LOGICAL_ONLY_NAMED_KEYS, SHARED_NAMED_KEYS } from '../src/_named-keys'
 import { hotkeyChordFromKeydown } from '../src/_recorder-chord'
-import type { FunctionKey, Hotkey, NamedKey, PhysicalKeyCode } from '../src'
+import type { FunctionKey, NamedKey } from '../src/key.types.js'
+import type { Hotkey, PhysicalKeyCode } from '../src'
 
 it('types corresponding logical and physical names without conflating their spellings', () => {
   expectTypeOf<`Mod+${FunctionKey}`>().toExtend<Hotkey>()

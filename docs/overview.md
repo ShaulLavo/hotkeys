@@ -1,46 +1,39 @@
 # Overview
 
-Use hotkeys for three jobs: observe keyboard state, register shortcut callbacks, or route commands through an editor's focus tree. The core package supports browser and terminal adapters; `@shaulavo/hotkeys/react` adds hooks for state and registration.
+`@shaulavo/hotkeys` handles three keyboard tasks: reading held key state, registering shortcut callbacks on a document, and routing commands through a focus tree. One package ships four entrypoints:
+
+- `@shaulavo/hotkeys` for shortcut registration, focus-aware browser and headless dispatch, parsing, validation, formatting, diagnostics, and recording.
+- `@shaulavo/hotkeys/react` for React hooks over the document registry, held-key state, and recorders.
+- `@shaulavo/hotkeys/terminal` for parsed terminal key events, including legacy escapes and the Kitty keyboard protocol.
+- `@shaulavo/hotkeys/adapter` for low-level trie, predicate, chord runtime, and DOM listener helpers used by custom hosts.
 
 ## Read keyboard state
 
-Use these React hooks for held-key indicators and shortcut hints:
+Use these hooks from `@shaulavo/hotkeys/react` for held-key indicators and modifier hints:
 
-| Hook                     | Result                                                                                                                     |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
-| `useHeldKeys()`          | The currently held key names.                                                                                              |
-| `useHeldKeyCodes()`      | A map from held key names to their physical `event.code` values.                                                           |
-| `useKeyHold('Shift')`    | Whether that key is held, including while other keys are pressed.                                                          |
-| `useHotkeyHint('Mod+S')` | Whether the held modifiers should reveal a shortcut hint. Combine it with your action's availability and focus conditions. |
+| Hook                     | Returns                                                                                                            |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| `useHeldKeys()`          | Currently held normalized key names.                                                                               |
+| `useHeldKeyCodes()`      | Map from held key names to their physical `event.code` values.                                                     |
+| `useKeyHold('Shift')`    | Whether that key is held, even while other keys are pressed at the same time.                                      |
+| `useHotkeyHint('Mod+S')` | Whether the held modifiers match a shortcut's modifiers. Combine this with your action's focus and enabled checks. |
 
-`useKeyHold` is inclusive: holding Shift and then A keeps `useKeyHold('Shift')` true. These values describe the current held state; ordered shortcut steps use a sequence binding. Outside React, `getKeyStateTracker()` exposes the shared tracker and its store. See the [API reference](../packages/hotkeys/docs/api.md#record-shortcuts) and [React package](../packages/react-hotkeys/README.md).
+`useKeyHold` is inclusive. Holding Shift and then A keeps `useKeyHold('Shift')` true. Outside React, `getKeyStateTracker()` exposes the shared tracker and its TanStack Store. See [Record shortcuts and track held keys](../packages/hotkeys/docs/api.md#record-shortcuts).
 
 ## Register shortcuts
 
-Choose a single binding or a batch of independent bindings:
-
-| Job                            | React hook           | Input                                                          |
-| ------------------------------ | -------------------- | -------------------------------------------------------------- |
-| One stroke                     | `useHotkey`          | A hotkey such as `'Mod+S'`.                                    |
-| One ordered sequence           | `useHotkeySequence`  | Steps such as `['G', 'G']`, pressed in order for one callback. |
-| Several single-stroke bindings | `useHotkeys`         | An array of `{ hotkey, callback, options? }` definitions.      |
-| Several sequence bindings      | `useHotkeySequences` | An array of `{ sequence, callback, options? }` definitions.    |
-
-`useHotkey` also accepts a raw hotkey object. The sequence hooks take arrays of hotkey strings. The registration hooks use the document registry and unregister their bindings when the component unmounts. `HotkeysProvider` supplies defaults; batch options apply in the order provider defaults, common options, then per-definition options. The [React API](../packages/hotkeys/docs/api.md#react) describes targets, enabled state, and provider defaults.
-
-The core registry uses one `register` method for both a stroke and an ordered sequence. Keep each handle and unregister it when its owner is removed:
+Use `registerHotkey` for a single binding or sequence on the shared document registry, or call `createHotkeyRegistry()` when a view owns its own registry. Call `dispose()` on each registration handle when the owner unmounts.
 
 ```ts
-import { getHotkeyRegistry } from '@shaulavo/hotkeys'
+import { registerHotkey } from '@shaulavo/hotkeys'
 
 function mountShortcuts(onSave: () => void, onTop: () => void): () => void {
-  const registry = getHotkeyRegistry()
-  const save = registry.register('Mod+S', onSave)
-  const top = registry.register(['G', 'G'], onTop, { ignoreInputs: true })
+  const save = registerHotkey('Mod+S', onSave)
+  const top = registerHotkey(['G', 'G'], onTop, { ignoreInputs: true })
 
   return () => {
-    save.unregister()
-    top.unregister()
+    save.dispose()
+    top.dispose()
   }
 }
 
@@ -51,27 +44,56 @@ const cleanup = mountShortcuts(
 // Call cleanup() when the view unmounts.
 ```
 
-Within a stroke, `+` joins modifiers to a key: `Mod+S`. `Mod` means Command on macOS and Control elsewhere. Pass an array for a registry or React sequence. Dispatcher keymaps also accept space-separated strokes, such as `keys: 'Mod+K Mod+C'`; the single-hotkey parsing functions parse one stroke. See [parsing and formatting](../packages/hotkeys/docs/api.md#parse-match-and-format) and [chord syntax](../packages/hotkeys/docs/keymaps.md#chords).
+Within one stroke, `+` joins modifiers to a key, as in `Mod+S` or `Mod++`. `Mod` means Command on macOS and Control on Windows and Linux. Pass an array for a registry sequence, or pass a space-separated chord string such as `'Mod+K Mod+C'` to keymaps and `parseShortcut`.
+
+In React, `@shaulavo/hotkeys/react` binds to the shared document registry and disposes each registration when the component unmounts:
+
+| Job                             | React hook           | Input                                                            |
+| ------------------------------- | -------------------- | ---------------------------------------------------------------- |
+| One stroke                      | `useHotkey`          | A `HotkeyStroke` such as `'Mod+S'` or `{ key: 'S', mod: true }`. |
+| One ordered sequence            | `useHotkeySequence`  | A `HotkeySequence` such as `['G', 'G']`.                         |
+| Multiple single-stroke bindings | `useHotkeys`         | Array of `{ hotkey, callback, options? }` definitions.           |
+| Multiple sequence bindings      | `useHotkeySequences` | Array of `{ sequence, callback, options? }` definitions.         |
+
+`HotkeysProvider` supplies default options for those hooks. Batch options apply in this order: provider defaults, common options, then per-definition options. See the [React API reference](../packages/hotkeys/docs/api.md#react) for targets, enabled state, batch rollback, and server rendering.
 
 ## Build editor keymaps
 
-Use a dispatcher when a key's command depends on focus. The [runnable getting-started example](getting-started.md#one-shortcut-two-commands) creates a workspace, textarea, and sidebar: `Mod+B` toggles the sidebar at workspace focus and toggles bold styling at editor focus.
+Use a dispatcher when the same key triggers different commands depending on focus. The [getting-started guide](getting-started.md#route-one-shortcut-by-focus) shows a complete browser example where `Mod+B` toggles a sidebar in the workspace and toggles bold text in an editor.
 
-`createBrowserDispatcher` attaches focus nodes to DOM elements. Each node carries a context and command handlers, and a parent connects it to the surrounding workspace. The dispatcher resolves the key against that focus path. Own the dispatcher for the view's lifetime and call `dispose()` during teardown. `createDispatcher` exposes the same engine for hosts that supply their own input and focus, including terminals.
+`createBrowserDispatcher` attaches focus nodes to DOM elements. Each node defines a context and command handlers, and a `parent` link connects it to enclosing panes. When a key arrives, the dispatcher resolves it against that focus path and runs the first handler that accepts the command. Call `dispose()` when the view unmounts.
+
+For non-DOM hosts, call `createDispatcher` from `@shaulavo/hotkeys` and pass your own `KeyInput` events. For terminal apps, call `createTerminalDispatcher` from `@shaulavo/hotkeys/terminal`.
+
+```ts
+import { createTerminalDispatcher } from '@shaulavo/hotkeys/terminal'
+import type { TerminalKeyLike } from '@shaulavo/hotkeys/terminal'
+
+const dispatcher = createTerminalDispatcher<TerminalKeyLike, { 'settings.open': void }>({
+  platform: 'linux',
+  keymap: [{ keys: 'Control+K S', command: 'settings.open' }],
+})
+const root = dispatcher.createNode({
+  commands: { 'settings.open': () => console.log('Open settings') },
+})
+root.focus()
+
+const report = dispatcher.explain('Control+K S')
+console.log(report.active.length)
+dispatcher.dispose()
+```
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/key-resolution.dark.svg">
   <img alt="A key press follows the focus path, ranks matching bindings, and runs the first handler that accepts it." src="assets/key-resolution.light.svg">
 </picture>
 
-Keep the detailed policy in the guides:
+Read the detailed guides for exact rules:
 
-- [Contexts and the focus tree](../packages/hotkeys/docs/concepts.md#the-focus-tree) explain where a command can run.
-- [Ranking and user overrides](../packages/hotkeys/docs/keymaps.md#ranking) explain which binding wins and how a user removes or replaces one.
-- [Chords](../packages/hotkeys/docs/keymaps.md#chords) cover pending prefixes, timeouts, and replay.
-- [Terminal adapters](../packages/hotkeys/docs/keymaps.md#terminals) accept parsed terminal keys, including Kitty keyboard input.
-- [Display APIs](../packages/hotkeys/docs/api.md#parse-match-and-format) and [recorders](../packages/hotkeys/docs/api.md#record-shortcuts) support shortcut labels and settings screens.
+- [The focus tree](../packages/hotkeys/docs/concepts.md#the-focus-tree) explains focus nodes, DOM attachment, and hosted widgets.
+- [Ranking and user overrides](../packages/hotkeys/docs/keymaps.md#ranking) explain tie breaking, `unbind`, `command: null`, and `dispatcher.explain`.
+- [Chords](../packages/hotkeys/docs/keymaps.md#chords) cover pending prefixes, timeouts, prefix ordering, and text replay.
+- [Terminals](../packages/hotkeys/docs/keymaps.md#terminals) cover `createTerminalDispatcher` and terminal key normalization.
+- [Parse, match, and format](../packages/hotkeys/docs/api.md#parse-match-and-format) and [Record shortcuts](../packages/hotkeys/docs/api.md#record-shortcuts) cover shortcut validation, display labels, and settings UIs.
 
-The current React registration hooks use the document registry. For focus contexts, use the core dispatcher shown above.
-
-Version 0.0.x APIs can change between releases. The [lookup benchmark](../packages/hotkeys/docs/performance.md) times a 255-binding table. Run `bun bench/lookup.ts` from `packages/hotkeys`; its timings describe that machine and run.
+Version 0.0.x APIs can change between releases. The [performance notes](../packages/hotkeys/docs/performance.md) record timings for a 255-binding table. Run `bun bench/lookup.ts` from `packages/hotkeys` to measure on your machine.

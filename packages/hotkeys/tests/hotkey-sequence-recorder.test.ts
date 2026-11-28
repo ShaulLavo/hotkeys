@@ -48,7 +48,7 @@ describe.each(['key', 'code', undefined] as const)(
   'HotkeySequenceRecorder (recordBy: %s)',
   (recordBy) => {
     afterEach(() => {
-      instances.splice(0).forEach((recorder) => recorder.destroy())
+      instances.splice(0).forEach((recorder) => recorder.dispose())
       window.dispatchEvent(new Event('blur'))
       document.body.replaceChildren()
       vi.useRealTimers()
@@ -214,7 +214,7 @@ describe.each(['key', 'code', undefined] as const)(
         expect(r.store.state.steps.length).toBe(0)
         expect(r.store.state.isRecording).toBe(true)
 
-        r.destroy()
+        r.dispose()
         document.body.removeChild(input)
       })
 
