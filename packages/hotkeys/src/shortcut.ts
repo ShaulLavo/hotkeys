@@ -105,7 +105,8 @@ function validateStroke(raw: RawHotkey, error: Report, warn: Report): ValidatedS
   if (!key || modifierAlias(key)) error(raw.key, 'A shortcut needs a non-modifier key')
   if (key.length > 1 && /[[\]]/.test(key))
     error(raw.key, 'Invalid physical key. Use the code field or a bracketed shortcut token')
-  if (/\s/.test(key)) error(raw.key, 'A stroke must contain one key')
+  if (/\s/.test(key) || (key.length > 1 && key.includes('+')))
+    error(raw.key, 'A stroke must contain one key')
   if (key && !knownKeys.has(key) && !isPrintableKey(key)) warn(raw.key, 'Unknown key')
   return Object.freeze({ ...modifiers, key })
 }

@@ -92,8 +92,8 @@ export function explainKeymap<Commands extends CommandMap = AnyCommands, Source 
   const inputs = isInputStream(input) ? input : queryStrokes(keymap, input)
   const stack = options.contextStack ?? []
   const availabilityAt = (index: number) => {
-    const source =
-      options.sources?.[index] ?? (inputs.length === 1 && index === 0 ? options.source : undefined)
+    const shorthand = inputs.length === 1 && index === 0 ? options.source : undefined
+    const source = options.sources === undefined ? shorthand : options.sources[index]
     const filter = options.isAvailable
     return {
       unknown: filter !== undefined && source === undefined,
@@ -241,14 +241,13 @@ function continuationsFrom<Commands extends CommandMap>(
   blockedByPrefix: BlockedPrefix<Commands> | null,
 ): ExplainedContinuation<Commands>[] {
   const reports: ExplainedContinuation<Commands>[] = []
-  const queue = [{ step, prior: blockedByPrefix, earliest: -1 }]
+  const queue = [{ step, prior: blockedByPrefix }]
   for (const visit of queue) {
-    const { selection, strokeIndex } = visit.step
-    if (visit.step !== step) appendContinuations(reports, visit.step, visit.prior, visit.earliest)
+    const { strokeIndex } = visit.step
+    if (visit.step !== step) appendContinuations(reports, visit.step, visit.prior)
     const prior = preferBlocker(visit.prior, prefixBlocker(visit.step))
     const index = strokeIndex + 1
     const availability = availabilityAt(index)
-    const earliest = selection.bindings[0]?.payload.index ?? -1
     for (const node of childrenOf(visit.step.node)) {
       queue.push({
         step: {
@@ -258,7 +257,6 @@ function continuationsFrom<Commands extends CommandMap>(
           strokeIndex: index,
         },
         prior,
-        earliest,
       })
     }
   }
@@ -277,11 +275,10 @@ function appendContinuations<Commands extends CommandMap>(
   reports: ExplainedContinuation<Commands>[],
   step: Step<Commands>,
   prior: BlockedPrefix<Commands> | null,
-  earliest: number,
 ) {
   for (const { payload: binding } of step.selection.bindings) {
     const winner = prior?.availability === 'known' ? prior.winningBinding : null
-    const shadowedByIndex = winner?.index ?? (binding.index < earliest ? earliest : null)
+    const shadowedByIndex = winner?.index ?? null
     let status: ExplainedContinuation<Commands>['status'] = 'pending'
     if (step.availability.unknown || prior?.availability === 'unknown')
       status = 'availability-unknown'

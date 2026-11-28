@@ -105,3 +105,16 @@ it('continues through declined keyup registrations, newest first, and freezes vi
   expect(Object.isFrozen(view.strokes[0])).toBe(true)
   expect(Object.isFrozen(view.options)).toBe(true)
 })
+
+it.each(['constructor', 'toString', '__proto__'])('warns for unknown names such as %s', (key) => {
+  expect(parseShortcut(key)).toMatchObject({
+    ok: true,
+    value: [{ key }],
+    warnings: [{ token: key }],
+  })
+})
+
+it('rejects raw logical keys that would be read as modifier syntax on round trip', () => {
+  expect(parseShortcut({ key: 'Ctrl+A' })).toMatchObject({ ok: false })
+  expect(parseShortcut({ key: '+' })).toMatchObject({ ok: true, value: [{ key: '+' }] })
+})

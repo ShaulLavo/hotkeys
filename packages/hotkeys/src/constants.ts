@@ -426,7 +426,7 @@ export function normalizeKeyName(key: string): string {
   // (browser extensions synthesizing key events, accessibility tools, certain OS/browser combinations).
   if (!key) return ''
   // Check aliases first
-  if (key in KEY_ALIASES) {
+  if (Object.hasOwn(KEY_ALIASES, key)) {
     return KEY_ALIASES[key]!
   }
 

@@ -298,8 +298,9 @@ export function createDispatcher<Source = unknown, Commands extends CommandMap =
       removed: false,
     }
     states.set(node, state)
-    for (const [command, handler] of Object.entries(nodeOptions.commands ?? {}))
-      addHandler(state, command, handler as unknown as CommandHandler<Source>)
+    for (const [command, handler] of Object.entries(nodeOptions.commands ?? {})) {
+      if (handler) addHandler(state, command, handler as unknown as CommandHandler<Source>)
+    }
     return node
   }
   function addHandler(

@@ -58,7 +58,12 @@ it('uses the whole subtree when checking prefix reachability', () => {
   })
   expect(shadowed.active).toEqual([])
   expect(shadowed.candidates[0]).toMatchObject({ status: 'shadowed-by-prefix', blockedByIndex: 1 })
-  expect(explainKeymap(compileKeymap(entries, 'linux'), 'K C').active[0]?.command).toBe('comment')
+  const keymap = compileKeymap(entries, 'linux')
+  expect(explainKeymap(keymap, 'K C').active[0]?.command).toBe('comment')
+  expect(explainKeymap(keymap, 'K').continuations).toMatchObject([
+    { binding: { command: 'comment' }, status: 'pending' },
+    { binding: { command: 'close' }, status: 'pending' },
+  ])
   expect(
     explainKeymap(compileKeymap(entries.slice(0, 2).toReversed(), 'linux'), 'K C').active[0]
       ?.command,
@@ -172,4 +177,23 @@ it('keeps host calls typed while an embedded node can decline a conflicting comm
     host.handle('select', ({ args }: { args: string }) => !!args)
   }
   expectTypeOf(checkInvalidCalls).toBeFunction()
+})
+
+it('passes explicit null sources to the availability guard', () => {
+  using dispatcher = createDispatcher<null>({
+    keymap: [{ keys: 'K C', command: 'go' }],
+    isAvailable: () => false,
+  })
+  expect(dispatcher.explain('K C', { sources: [null, null] }).blockedByPrefix).toMatchObject({
+    kind: 'prefix-unavailable',
+    availability: 'known',
+  })
+})
+
+it('ignores omitted handlers in a typed commands object', () => {
+  using dispatcher = createDispatcher<null, { save: void }>({
+    keymap: [{ keys: 'F1', command: 'save' }],
+  })
+  dispatcher.createNode({ commands: { save: undefined } }).focus()
+  expect(dispatcher.dispatchCommand('save')).toBe(false)
 })
