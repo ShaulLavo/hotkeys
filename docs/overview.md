@@ -1,99 +1,106 @@
 # Overview
 
-`@shaulavo/hotkeys` handles three keyboard tasks: reading held key state, registering shortcut callbacks on a document, and routing commands through a focus tree. One package ships four entrypoints:
+`@shaulavo/hotkeys` separates keyboard parsing, chord state, focus-tree dispatch, and framework bindings into one ESM package with four explicit entrypoints. Every entrypoint uses named exports without wildcard re-exports.
 
-- `@shaulavo/hotkeys` for shortcut registration, focus-aware browser and headless dispatch, parsing, validation, formatting, diagnostics, and recording.
-- `@shaulavo/hotkeys/react` for React hooks over the document registry, held-key state, and recorders.
-- `@shaulavo/hotkeys/terminal` for parsed terminal key events, including legacy escapes and the Kitty keyboard protocol.
-- `@shaulavo/hotkeys/adapter` for low-level trie, predicate, chord runtime, and DOM listener helpers used by custom hosts.
+## Runtime requirements and entrypoints
 
-## Read keyboard state
+The package targets Node `>=24` and modern browsers. React integration uses React 19 context values, ref cleanup functions, and `useEffectEvent`, so `@shaulavo/hotkeys/react` requires `react >=19.2.0`, `react-dom >=19.2.0`, and `@tanstack/react-store ^0.11.1` as optional peer dependencies. Non-React apps do not install React.
 
-Use these hooks from `@shaulavo/hotkeys/react` for held-key indicators and modifier hints:
+| Entrypoint                   | Purpose                                                                                                                                                                                                                     |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@shaulavo/hotkeys`          | Shortcut parsing, formatting, matching, one-line registration, `HotkeyRegistry`, focus-tree `createDispatcher` and `createBrowserDispatcher`, `explainKeymap`, recorders, and `KeyStateTracker`.                            |
+| `@shaulavo/hotkeys/react`    | Typed and untyped `HotkeysProvider`, `FocusScope`, `useFocusNode`, `useHotkeysDispatcher`, `usePendingChord`, `useHotkey`, `useHotkeySequence`, `useHotkeys`, `useHotkeyRegistrations`, held-key hooks, and recorder hooks. |
+| `@shaulavo/hotkeys/terminal` | `createTerminalDispatcher`, `keyInputFromTerminalKey`, and `terminalKeyEffects` for terminal and TUI event loops.                                                                                                           |
+| `@shaulavo/hotkeys/adapter`  | Low-level trie, chord runtime, predicate evaluation, and browser listener primitives for custom host adapters.                                                                                                              |
 
-| Hook                     | Returns                                                                                                            |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------ |
-| `useHeldKeys()`          | Currently held normalized key names.                                                                               |
-| `useHeldKeyCodes()`      | Map from held key names to their physical `event.code` values.                                                     |
-| `useKeyHold('Shift')`    | Whether that key is held, even while other keys are pressed at the same time.                                      |
-| `useHotkeyHint('Mod+S')` | Whether the held modifiers match a shortcut's modifiers. Combine this with your action's focus and enabled checks. |
+Subpath bundles import shared helpers from `@shaulavo/hotkeys` as external references, so a consumer pays for one copy of the core runtime.
 
-`useKeyHold` is inclusive. Holding Shift and then A keeps `useKeyHold('Shift')` true. Outside React, `getKeyStateTracker()` exposes the shared tracker and its TanStack Store. See [Record shortcuts and track held keys](../packages/hotkeys/docs/api.md#record-shortcuts).
+## Two dispatch pipelines
 
-## Register shortcuts
+Applications usually need one of two models, and `@shaulavo/hotkeys` keeps them separate so their rules never collide.
 
-Use `registerHotkey` for a single binding or sequence on the shared document registry, or call `createHotkeyRegistry()` when a view owns its own registry. Call `dispose()` on each registration handle when the owner unmounts.
+### Focus-aware keymaps
 
-```ts
-import { registerHotkey } from '@shaulavo/hotkeys'
+`createBrowserDispatcher` and `createDispatcher` bind a declarative table of `KeymapEntry` objects to a tree of `FocusNode` instances. Each node attaches to a DOM element or logical pane and publishes a `KeyContext`. When a key arrives, the dispatcher walks from the focused node to the root, ranks matching bindings by context depth, source rank, and table order, and runs command handlers from deepest node upward until one accepts the command. Returning `false` declines the command and tries the next handler or binding.
 
-function mountShortcuts(onSave: () => void, onTop: () => void): () => void {
-  const save = registerHotkey('Mod+S', onSave)
-  const top = registerHotkey(['G', 'G'], onTop, { ignoreInputs: true })
+Use this pipeline for workspaces, editors, terminals, palettes, and any view where the same shortcut triggers different commands depending on focus.
 
+### Document hotkey registry
+
+`registerHotkey`, `getHotkeyRegistry`, and `createHotkeyRegistry` bind callbacks directly to strokes or chords on a document or element target. Internally, a `HotkeyRegistry` owns its own `BrowserDispatcher`, compiles its active registrations lazily on the next key event, and filters availability to its own entry IDs.
+
+Use this pipeline for standalone page shortcuts, modal Escape handlers, or quick bindings that do not need a focus tree.
+
+### Pipeline ownership in React
+
+`HotkeysProvider` keeps these two pipelines explicit and non-overlapping:
+
+- Focus hooks (`FocusScope`, `useFocusNode`, `useHotkeysDispatcher`, `usePendingChord`) always bind to the provider's `BrowserDispatcher`, configured with either an external `dispatcher` prop or a provider-owned `keymap` prop. Passing both is a type error. Calling `useFocusNode` or `FocusScope` without either throws an explicit error.
+- Registration hooks (`useHotkey`, `useHotkeySequence`, `useHotkeys`, `useHotkeyRegistrations`) always bind to `props.registry ?? getHotkeyRegistry()`. When a hook omits `target` or passes `target: null`, it forwards `target: undefined` to the active registry so that registry binds to its own document.
+- If an app mounts both a focus dispatcher and registration hooks, they run as independent DOM listeners. To resolve conflicts and focus precedence in one place, put all shortcuts in the focus keymap.
+
+## Typed commands and hosted widgets
+
+`createHotkeysContext<Commands>()` creates a private React context parameterized by your command map. Child components use that context's `FocusScope` and `useFocusNode` hooks, so TypeScript rejects unknown command names and wrong argument shapes across the tree.
+
+Embedded widgets such as terminal panes or code editors often define their own command names without knowing the host's closed command map. A typed host calls `dispatcher.asHosted()` to get a `HostedBrowserDispatcher` and passes its `FocusNode` directly as a covariant `HostedFocusNode` parent. The host keeps strict command typing on its own API while embedded widgets attach child nodes and validate `event.args` at runtime.
+
+```tsx
+import { createBrowserDispatcher } from '@shaulavo/hotkeys'
+import type { HostedBrowserDispatcher, HostedFocusNode, KeymapEntry } from '@shaulavo/hotkeys'
+
+type AppCommands = {
+  'sidebar.toggle': void
+  'tab.select': { index: number }
+}
+
+const keymap: readonly KeymapEntry<AppCommands>[] = [
+  { keys: 'Mod+B', command: 'sidebar.toggle', context: 'Workspace' },
+  { keys: 'Mod+1', command: 'tab.select', args: { index: 0 }, context: 'Workspace' },
+]
+
+function mountWidget(hosted: HostedBrowserDispatcher, parent: HostedFocusNode, el: HTMLElement) {
+  const widget = hosted.createNode({
+    parent,
+    context: 'Terminal',
+    commands: {
+      'terminal.clear': () => {},
+    },
+  })
+  const detach = hosted.attachElement(widget, el)
   return () => {
-    save.dispose()
-    top.dispose()
+    detach()
+    widget.remove()
   }
 }
 
-const cleanup = mountShortcuts(
-  () => console.log('Save requested'),
-  () => window.scrollTo({ top: 0 }),
-)
-// Call cleanup() when the view unmounts.
+export function createWorkspaceHost(root: HTMLElement, widgetEl: HTMLElement) {
+  const dispatcher = createBrowserDispatcher<AppCommands>({ root, keymap })
+  const workspace = dispatcher.createNode({
+    context: 'Workspace',
+    commands: {
+      'sidebar.toggle': () => {},
+      'tab.select': ({ args }) => void args.index,
+    },
+  })
+  const detachWorkspace = dispatcher.attachElement(workspace, root)
+  const unmountWidget = mountWidget(dispatcher.asHosted(), workspace, widgetEl)
+
+  return () => {
+    unmountWidget()
+    detachWorkspace()
+    dispatcher.dispose()
+  }
+}
 ```
 
-Within one stroke, `+` joins modifiers to a key, as in `Mod+S` or `Mod++`. `Mod` means Command on macOS and Control on Windows and Linux. Pass an array for a registry sequence, or pass a space-separated chord string such as `'Mod+K Mod+C'` to keymaps and `parseShortcut`.
+## Uniform disposal
 
-In React, `@shaulavo/hotkeys/react` binds to the shared document registry and disposes each registration when the component unmounts:
+Every long-lived handle and instance (`HotkeyRegistration`, `HotkeyRegistry`, `Dispatcher`, `BrowserDispatcher`, `TerminalDispatcher`, `HotkeyRecorder`, `HotkeySequenceRecorder`, and `KeyStateTracker`) implements both `.dispose()` and `[Symbol.dispose]()`, so you can clean them up manually or with `using`. Lightweight listener attachments (`node.handle`, `dispatcher.attachElement`, `dispatcher.observeKeys`, `dispatcher.subscribePending`) return a `() => void` cleanup function.
 
-| Job                             | React hook           | Input                                                            |
-| ------------------------------- | -------------------- | ---------------------------------------------------------------- |
-| One stroke                      | `useHotkey`          | A `HotkeyStroke` such as `'Mod+S'` or `{ key: 'S', mod: true }`. |
-| One ordered sequence            | `useHotkeySequence`  | A `HotkeySequence` such as `['G', 'G']`.                         |
-| Multiple single-stroke bindings | `useHotkeys`         | Array of `{ hotkey, callback, options? }` definitions.           |
-| Multiple sequence bindings      | `useHotkeySequences` | Array of `{ sequence, callback, options? }` definitions.         |
+## Next steps
 
-`HotkeysProvider` supplies default options for those hooks. Batch options apply in this order: provider defaults, common options, then per-definition options. See the [React API reference](../packages/hotkeys/docs/api.md#react) for targets, enabled state, batch rollback, and server rendering.
-
-## Build editor keymaps
-
-Use a dispatcher when the same key triggers different commands depending on focus. The [getting-started guide](getting-started.md#route-one-shortcut-by-focus) shows a complete browser example where `Mod+B` toggles a sidebar in the workspace and toggles bold text in an editor.
-
-`createBrowserDispatcher` attaches focus nodes to DOM elements. Each node defines a context and command handlers, and a `parent` link connects it to enclosing panes. When a key arrives, the dispatcher resolves it against that focus path and runs the first handler that accepts the command. Call `dispose()` when the view unmounts.
-
-For non-DOM hosts, call `createDispatcher` from `@shaulavo/hotkeys` and pass your own `KeyInput` events. For terminal apps, call `createTerminalDispatcher` from `@shaulavo/hotkeys/terminal`.
-
-```ts
-import { createTerminalDispatcher } from '@shaulavo/hotkeys/terminal'
-import type { TerminalKeyLike } from '@shaulavo/hotkeys/terminal'
-
-const dispatcher = createTerminalDispatcher<TerminalKeyLike, { 'settings.open': void }>({
-  platform: 'linux',
-  keymap: [{ keys: 'Control+K S', command: 'settings.open' }],
-})
-const root = dispatcher.createNode({
-  commands: { 'settings.open': () => console.log('Open settings') },
-})
-root.focus()
-
-const report = dispatcher.explain('Control+K S')
-console.log(report.active.length)
-dispatcher.dispose()
-```
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/key-resolution.dark.svg">
-  <img alt="A key press follows the focus path, ranks matching bindings, and runs the first handler that accepts it." src="assets/key-resolution.light.svg">
-</picture>
-
-Read the detailed guides for exact rules:
-
-- [The focus tree](../packages/hotkeys/docs/concepts.md#the-focus-tree) explains focus nodes, DOM attachment, and hosted widgets.
-- [Ranking and user overrides](../packages/hotkeys/docs/keymaps.md#ranking) explain tie breaking, `unbind`, `command: null`, and `dispatcher.explain`.
-- [Chords](../packages/hotkeys/docs/keymaps.md#chords) cover pending prefixes, timeouts, prefix ordering, and text replay.
-- [Terminals](../packages/hotkeys/docs/keymaps.md#terminals) cover `createTerminalDispatcher` and terminal key normalization.
-- [Parse, match, and format](../packages/hotkeys/docs/api.md#parse-match-and-format) and [Record shortcuts](../packages/hotkeys/docs/api.md#record-shortcuts) cover shortcut validation, display labels, and settings UIs.
-
-Version 0.0.x APIs can change between releases. The [performance notes](../packages/hotkeys/docs/performance.md) record timings for a 255-binding table. Run `bun bench/lookup.ts` from `packages/hotkeys` to measure on your machine.
+- Follow [Getting started](getting-started.md) for React focus trees, settings rebinding, and terminal dispatch.
+- Read [Concepts](../packages/hotkeys/docs/concepts.md) for key resolution, normalization modes, chords, and tracker lifetime.
+- Read [Keymaps](../packages/hotkeys/docs/keymaps.md) for context predicates, precedence, and `dispatcher.explain()`.
+- Read the [API reference](../packages/hotkeys/docs/api.md) for every export across all four entrypoints.

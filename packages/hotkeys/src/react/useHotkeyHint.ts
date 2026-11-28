@@ -1,4 +1,5 @@
-import { matchesHeldModifiers } from '@shaulavo/hotkeys'
+import { matchesHeldModifiers, parseHotkey } from '@shaulavo/hotkeys'
+import { useMemo } from 'react'
 import { useKeyState } from './_use-key-state.js'
 import type { HeldModifierOptions, HotkeyStroke } from '@shaulavo/hotkeys'
 
@@ -10,5 +11,6 @@ import type { HeldModifierOptions, HotkeyStroke } from '@shaulavo/hotkeys'
  * This helper does not register a shortcut or check whether its target is focused.
  */
 export function useHotkeyHint(hotkey: HotkeyStroke, options: HeldModifierOptions = {}): boolean {
-  return useKeyState((state) => matchesHeldModifiers(hotkey, state.heldKeys, options))
+  const parsed = useMemo(() => parseHotkey(hotkey, options.platform), [hotkey, options.platform])
+  return useKeyState((state) => matchesHeldModifiers(parsed, state.heldKeys, options))
 }

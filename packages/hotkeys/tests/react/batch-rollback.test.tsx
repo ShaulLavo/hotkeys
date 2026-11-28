@@ -3,7 +3,6 @@ import { act, cleanup, render } from '@testing-library/react'
 import { getHotkeyRegistry, parseHotkey } from '../../src/index.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useHotkeys } from '../../src/react/useHotkeys.js'
-import { useHotkeySequences } from '../../src/react/useHotkeySequences.js'
 import type { ReactNode } from 'react'
 import type { Hotkey, HotkeyCallback, HotkeyRegistry } from '../../src/index.js'
 import type { UseHotkeyOptions } from '../../src/react/useHotkey.js'
@@ -84,10 +83,10 @@ const fixtures = [
       ),
   },
   {
-    name: 'useHotkeySequences',
+    name: 'useHotkeys',
     keys: (key: Hotkey): readonly Hotkey[] => [key, key],
     useBatch: (rows: readonly Row[]) =>
-      useHotkeySequences(
+      useHotkeys(
         rows.map((row) => ({
           sequence: row.keys,
           callback: row.callback,

@@ -1,13 +1,7 @@
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { getHotkeyRegistry } from '../../src/index.js'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
-import {
-  HotkeysProvider,
-  useHotkey,
-  useHotkeys,
-  useHotkeySequence,
-  useHotkeySequences,
-} from '../../src/react/index.js'
+import { HotkeysProvider, useHotkey, useHotkeys, useHotkeySequence } from '../../src/react/index.js'
 import type { Hotkey, HotkeyCallback, HotkeyStroke } from '../../src/index.js'
 import type { ReactNode } from 'react'
 import type { UseHotkeyOptions } from '../../src/react/index.js'
@@ -28,13 +22,13 @@ function useBatch(key: Hotkey, callback: HotkeyCallback, options: UseHotkeyOptio
   useHotkeys([{ hotkey: key, callback, options }])
 }
 function useBatchSequence(key: Hotkey, callback: HotkeyCallback, options: UseHotkeyOptions) {
-  useHotkeySequences([{ sequence: [key, 'H'], callback, options }])
+  useHotkeys([{ sequence: [key, 'H'], callback, options }])
 }
 const fixtures: readonly Fixture[] = [
   { name: 'useHotkey', sequence: false, useRegistration: useSingle },
   { name: 'useHotkeySequence', sequence: true, useRegistration: useSequence },
   { name: 'useHotkeys', sequence: false, useRegistration: useBatch },
-  { name: 'useHotkeySequences', sequence: true, useRegistration: useBatchSequence },
+  { name: 'useHotkeys', sequence: true, useRegistration: useBatchSequence },
 ]
 
 beforeEach(() => getHotkeyRegistry().dispose())
@@ -240,9 +234,7 @@ test.each(fixtures)(
   (fixture) => {
     let defaults: UseHotkeyOptions = { enabled: false, meta: { name: 'provider' } }
     const wrapper = ({ children }: { children: ReactNode }) => (
-      <HotkeysProvider defaultOptions={{ hotkey: defaults, hotkeySequence: defaults }}>
-        {children}
-      </HotkeysProvider>
+      <HotkeysProvider defaultOptions={{ hotkey: defaults }}>{children}</HotkeysProvider>
     )
     const callback = vi.fn()
     const { rerender } = renderHook(
@@ -277,14 +269,12 @@ test.each(['single', 'sequence'] as const)(
   (kind) => {
     let defaults: UseHotkeyOptions = { enabled: false, meta: { name: 'provider' } }
     const wrapper = ({ children }: { children: ReactNode }) => (
-      <HotkeysProvider defaultOptions={{ hotkey: defaults, hotkeySequence: defaults }}>
-        {children}
-      </HotkeysProvider>
+      <HotkeysProvider defaultOptions={{ hotkey: defaults }}>{children}</HotkeysProvider>
     )
     const callback = vi.fn()
     function useRegistration({ row, common }: { row: UseHotkeyOptions; common: UseHotkeyOptions }) {
       useHotkeys(kind === 'single' ? [{ hotkey: 'G', callback, options: row }] : [], common)
-      useHotkeySequences(
+      useHotkeys(
         kind === 'sequence' ? [{ sequence: ['G', 'H'], callback, options: row }] : [],
         common,
       )

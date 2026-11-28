@@ -1,104 +1,89 @@
 # Concepts
 
-Hotkeys resolves keyboard input through four parts: a focus tree, a context stack, a chord trie, and one ranking rule. Read this page for the mental model, then see [Keymaps](keymaps.md) for the exact resolution rules.
+This page explains how `@shaulavo/hotkeys` resolves keys, normalizes shortcuts, separates focus dispatch from registry shortcuts, tracks held keys, and runs multi-stroke chords.
 
-## The short version
+## Key resolution
+
+Every keyboard event enters the matcher as a `KeyInput` with a normalized logical `key`, an optional physical `code`, a 4-bit modifier set (`alt`, `ctrl`, `meta`, `shift`), and an `altGraph` flag.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="../../../docs/assets/key-resolution.dark.svg">
-  <img alt="A key press flows through the focus path and context stack, ranks matching bindings, and runs the first handler that does not decline. A declining handler passes the key to the next ancestor, then the next binding." src="../../../docs/assets/key-resolution.light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="../../../docs/assets/key-resolution.dark.svg" />
+  <source media="(prefers-color-scheme: light)" srcset="../../../docs/assets/key-resolution.light.svg" />
+  <img alt="Key resolution order: exact logical key, physical code, implicit Shift, and positional fallback" src="../../../docs/assets/key-resolution.light.svg" />
 </picture>
 
-A dispatcher does not scan a flat global list of shortcuts. Each key press starts at the focused node, and that node's ancestor path determines which bindings can match. That is how `Mod+B` toggles bold text inside an editor and toggles a sidebar everywhere else in the workspace.
+`trieStep` evaluates candidate edges in four steps, stopping at the first edge accepted by the active context and availability filter:
 
-## The focus tree
+1. **Exact logical match:** `input.key` with the exact modifier mask. When `altGraph` is true (Windows and Linux AltGr), synthetic `Control+Alt` is stripped so the produced glyph matches directly.
+2. **Exact physical match:** `[${input.code}]` with the exact modifier mask. Physical bindings match key position on every keyboard layout.
+3. **Implicit Shift on a printed glyph:** when `Shift` is held and `input.key` is a printed symbol such as `?` or `+`, the matcher also checks the unshifted binding edge so `{ keys: '?' }` matches `Shift+Slash`.
+4. **Positional fallback:** for `Alt` or dead-key combinations where `event.key` produces an accented character or `'Dead'` (common with macOS `Option` chords), the matcher falls back to the US layout letter, digit, or punctuation name derived from `input.code` while keeping exact modifiers.
 
-A focus node represents a region that can hold focus, such as a workspace, an editor, or a terminal pane. Nodes connect through `parent`, and each node carries a context and command handlers.
+Because `trieStep` takes an `accepts` predicate, an ineligible binding on a higher-priority edge (for example, a `Terminal`-only logical `Control+A` binding while focus is in `Editor`) never blocks an eligible binding on a lower-priority edge (such as an `Editor` physical `Control+[KeyQ]` binding on an AZERTY keyboard). Live dispatch and `dispatcher.explain()` follow the same edge order.
+
+## Logical keys vs physical codes
+
+A shortcut stroke matches either a logical key or a physical `KeyboardEvent.code`, never both:
+
+- **Logical keys** (`'Mod+S'`, `'?'`, `{ key: 'S', mod: true }`) follow the user's active keyboard layout. Use logical keys for mnemonic commands such as Save or Find.
+- **Physical codes** (`'Mod+[KeyS]'`, `'Control+[Digit1]'`, `{ code: 'KeyQ', ctrl: true }`) match physical key position regardless of layout. Use physical codes for positional controls (such as directional keys or number-row tabs) or when recording layout-independent shortcuts.
+
+`parseHotkey(event, platform)` always returns a logical `ParsedHotkey` without `code`, and `areHotkeysEqual` keeps physical and logical strokes distinct even when one event could match both.
+
+## `Mod` and the three normalization modes
+
+`Mod` represents the platform's primary shortcut modifier: `Meta` (Command) on `'mac'`, and `Control` on `'windows'` and `'linux'`.
+
+`normalizeHotkey(input, { mode, platform })` makes modifier conversion explicit instead of guessing:
+
+- **`'symbolic'` (default):** keeps `Mod`, `Control`, and `Meta` as written. `'Control+S'` stays `'Control+S'` on Linux, and `'Mod+S'` stays `'Mod+S'`. Use `'symbolic'` when storing user settings.
+- **`'resolved'`:** resolves `Mod` for `platform` (`'Mod+S'` becomes `'Control+S'` on Linux and `'Meta+S'` on macOS). Use `'resolved'` for platform equivalence checks, `CompiledBinding.chord`, and pending chord labels.
+- **`'adaptive'`:** folds the platform's primary literal modifier (`Meta` on macOS, `Control` on Windows and Linux) into `'Mod'` when the other primary modifier is absent. Use `'adaptive'` when turning recorded literal events into portable cross-platform shortcuts.
+
+`HotkeyRecorder` and `HotkeySequenceRecorder` default to `modifierMode: 'adaptive'` and `recordBy: 'code'`, and both can be switched to `'literal'` or `'key'`.
+
+## Pipeline ownership: focus tree vs hotkey registry
+
+`@shaulavo/hotkeys` provides two distinct pipelines:
+
+- **Focus tree (`BrowserDispatcher` and `Dispatcher`):** declarative `KeymapEntry[]` tables routed through a tree of `FocusNode` instances with context predicates, source ranks, unbinding, and command handlers.
+- **Document registry (`HotkeyRegistry` and `registerHotkey`):** imperative callback bindings scoped to a document or element target. Internally, `HotkeyRegistry` owns a private `BrowserDispatcher` whose `isAvailable` filter only accepts registry entry IDs and whose keymap is rebuilt lazily on the next key event.
+
+In React, `HotkeysProvider` never mixes the two:
+
+- `FocusScope`, `useFocusNode`, `useHotkeysDispatcher`, and `usePendingChord` attach to the provider's focus dispatcher (`dispatcher` or `keymap` prop).
+- `useHotkey`, `useHotkeySequence`, `useHotkeys`, and `useHotkeyRegistrations` attach to `props.registry ?? getHotkeyRegistry()`.
+- Multiple `useFocusNode` calls on the same `(element, parent)` for one dispatcher share a single element-attached group node, merge their contexts on capture, and remove their handlers independently. Detaching the last registration removes the group node.
+
+## Chords and pending labels
+
+Multi-stroke bindings (such as `'Mod+K Mod+C'` or `['G', 'G']`) are stored in a stroke trie. When a stroke has reachable continuations (`selection.pending > 0`), the runtime swallows the stroke, buffers it, and publishes a `PendingChordLabel`:
 
 ```ts
-const hotkeys = createBrowserDispatcher({ keymap })
-const workspace = hotkeys.createNode({
-  context: 'Workspace',
-  commands: { 'sidebar.toggle': toggleSidebar },
-})
-const editor = hotkeys.createNode({
-  parent: workspace,
-  context: 'Editor',
-  commands: { 'text.bold': bold },
-})
+type PendingChordLabel = {
+  readonly keys: string
+  readonly candidateCount: number
+}
 ```
 
-In a browser, tie nodes to DOM elements with `attachElement(node, element)`. When a keydown event fires, the dispatcher walks the event's composed path, finds the closest attached element, and focuses the deepest node attached to that element. Clicking or tabbing into a pane moves dispatcher focus automatically. Outside a browser, call `node.focus()` directly. Removing the focused node or one of its ancestors moves focus to the nearest live parent.
+- `keys` is the space-separated sequence of platform-resolved stroke strings (from `normalizeHotkey(parsed, { mode: 'resolved', platform })`), such as `'Control+K'` on Linux or `'Meta+K'` on macOS. Pass `pending.keys` to `formatForDisplay` when rendering a UI badge.
+- `candidateCount` is the count of descendant trie nodes that have at least one reachable continuation binding.
+- `dispatcher.pending()` returns a frozen object whose reference stays identical (`Object.is`) until the pending state changes.
+- `dispatcher.subscribePending(listener)` notifies subscribers on each transition. If a listener synchronously cancels, completes, or replaces the pending chord, the runtime stops the stale outer notification loop immediately so later listeners never observe an obsolete label after `null`.
 
-When an application embeds an independent widget such as a terminal or code editor, call `hotkeys.asHosted()` and pass the enclosing node as a `HostedFocusNode` parent. The widget attaches its own child nodes into the same focus tree while the host keeps its typed command map intact.
+### Timeout and replay rules
 
-## The context stack
+- **Timeout (`timeoutMs`, default `1000` ms):** starts only when the buffered prefix is itself bound or when the focused target accepts text input (`acceptsTextInput`). An unbound non-text prefix such as `'Control+K'` waits indefinitely until the next key, window blur, hidden tab, pointer down, focus move, or `cancel()`.
+- **Mismatch and timeout replay:** if the next stroke does not match any continuation (or a timed prefix expires), the runtime runs the longest bound prefix in the buffer or forwards unclaimed buffered keys to `replay` (in browsers, `replayTextInput` inserts printable characters back into the text field). If focus moved before expiry, the pending chord ends as `'superseded'` without replaying into the new target.
+- **While pending:** `keyup`, modifier-only keys, and `repeat` keydowns are swallowed without ending the pending chord.
 
-The contexts of the nodes from the outermost ancestor down to the focused node form the context stack. Nodes with an empty context add no entry. Call `dispatcher.contextStack()` to inspect the current stack at any time.
+## `KeyStateTracker` singleton lifetime and recovery
 
-A binding's `context` field is a predicate evaluated against that stack, using Zed's syntax: `Workspace > !Terminal` or `Editor && extension == md`. A binding without `context` matches every focus stack.
+`getKeyStateTracker()` and `KeyStateTracker.getInstance()` share one singleton tracker per browser environment.
 
-## Ranking
-
-When multiple bindings match a key, the dispatcher sorts candidates by:
-
-1. Deepest context matched by `context`.
-2. Binding source: `user`, then `pack`, then `base`, then `default`.
-3. Table order, with later entries winning ties.
-
-The full rules and override examples live in [Ranking](keymaps.md#ranking).
-
-If a command handler returns `false`, it declines the command. The dispatcher tries the next ancestor node for the same command, then moves to the next candidate binding. If no handler accepts the key, the browser or host runs its default behavior.
-
-## Printed keys and physical keys
-
-Logical bindings match the printed character. `?` matches a `?` whether or not the layout requires Shift to type it. `Control++` matches Control with a printed `+`. This implicit-Shift rule applies to single-code-point non-letter glyphs, including digits, at any stroke in a chord. Letters and named keys always require exact Shift matching: `A` does not match `Shift+A`, and `Enter` does not match `Shift+Enter`. Writing `Shift+?` requires Shift explicitly.
-
-Physical bindings use bracketed `event.code` tokens such as `[Slash]` and `Control+[KeyE]`. Physical bindings always require exact modifiers. `Shift+Slash` requires `Shift+[Slash]` even when it prints `?`. Input events and recorded shortcuts keep their actual modifiers. Implicit Shift affects logical matching alone.
-
-For each stroke, the dispatcher tries matching edges in priority order:
-
-1. Exact printed-key match.
-2. Exact physical-code match.
-3. Printed-glyph match allowing implicit Shift.
-4. Positional fallback with the original modifiers.
-
-Exact `Shift+?` and `Shift+[Slash]` therefore win over permissive `?`. If a higher-priority edge has only bindings that are ineligible for the current context or `isAvailable` check, lookup continues to the next matching edge so an inactive `Terminal` binding on logical `Control+A` cannot block an active `Editor` binding on physical `Control+[KeyQ]`.
-
-Latin letters keep their printed meaning on letter keys, including accented characters: pressing Control with `é` on `KeyE` does not trigger logical `Control+E`. Bind `Control+[KeyE]` when you want that physical key position. Alt compatibility fallback for transformed glyphs remains available, but AltGraph's synthetic Control+Alt does not trigger logical shortcuts. Non-Latin layouts and dead keys can still use positional fallback.
-
-## Chords
-
-Space-separated strokes such as `Mod+K Mod+C` form chords. Compiling a keymap builds one trie over every bound sequence, and the dispatcher holds a chord pending while at least one eligible longer binding remains reachable.
-
-```mermaid
-stateDiagram-v2
-    [*] --> Idle
-    Idle --> Pending: key starts a chord
-    Pending --> Idle: next key completes it, run the chord
-    Pending --> Idle: bound prefix times out, run the prefix
-    Pending --> Idle: mismatch, run longest bound prefix and replay the rest
-    Pending --> Idle: focus change, blur, hidden tab or pointer down
-```
-
-A pending chord belongs to the focus under which it started and cancels if focus moves. Subscribe with `dispatcher.subscribePending(listener)` or pass `onPendingChange` to display a pending chord hint, and pass `onSequence` to observe how each chord ends.
-
-## Layers
-
-Hotkeys exposes three main layers plus two specialized subpaths. Pick the narrowest one your app needs:
-
-- `registerHotkey` and `getHotkeyRegistry()` for document-level callbacks such as `Mod+S`. The newest registration for a key runs first, and `conflictBehavior` controls collisions.
-- `createBrowserDispatcher()` for focus-aware browser apps. It adds focus nodes, contexts, typed command maps, user overrides, diagnostics via `explain()`, and DOM listeners.
-- `createDispatcher()` for DOM-free hosts that supply their own `KeyInput` events and focus calls.
-- `@shaulavo/hotkeys/terminal` for parsed terminal input (`createTerminalDispatcher`).
-- `@shaulavo/hotkeys/adapter` for custom runtimes that assemble `createChordRuntime`, `buildKeymapTrie`, and `attachKeyListeners` directly.
-
-Every stateful handle and runtime (`HotkeyRegistration`, `HotkeyRegistry`, `Dispatcher`, `BrowserDispatcher`, `TerminalDispatcher`, `HotkeyRecorder`, `HotkeySequenceRecorder`, and `KeyStateTracker`) tears down with `.dispose()` and supports `[Symbol.dispose]()`.
-
-The registry and the dispatcher resolve shared keys differently. In the registry, the newest registration for a key runs first, and returning `false` falls through to older registrations. Because the registry has no focus tree, two registrations of `Mod+B` on one target count as a conflict. When one key must perform different actions in different panes, use a dispatcher with focus contexts. Text input filtering also differs by layer: the registry uses `ignoreInputs`, while a dispatcher uses focus contexts. See [It works outside inputs but not inside](troubleshooting.md#it-works-outside-inputs-but-not-inside).
-
-## Where to go next
-
-- [Keymaps](keymaps.md) covers predicate syntax, ranking, unbinding, `explain()`, chord rules, and terminals.
-- [Troubleshooting](troubleshooting.md) diagnoses shortcuts that fail to fire or behave unexpectedly.
-- [API reference](api.md) documents every export across all four entrypoints.
+- **Listeners:** on creation in a browser, the tracker attaches capture-phase `keydown` and `keyup` listeners on `window` (so it sees keys before document dispatchers consume them), `blur` on `window`, and `visibilitychange` on `document`.
+- **State:** `tracker.store.state` holds `heldKeys` (unique normalized logical names), `heldCodes` (latest `event.code` per logical name), and `activeCodes` (every currently held physical `event.code`).
+- **Multi-side physical keys:** `heldCodes['Shift']` can hold only one value, so holding both `ShiftLeft` and `ShiftRight` records both codes in `activeCodes`. `isKeyHeld('[ShiftLeft]')` and `useKeyHold('[ShiftLeft]')` read `activeCodes`, keeping left and right keys independently observable until each side releases.
+- **Automatic recovery:** releasing any modifier key clears all non-modifier keys from the held set, preventing stuck keys when macOS intercepts chords like `Cmd+S` and omits the non-modifier `keyup`. Window `blur` and `document.visibilityState === 'hidden'` call `reset()`.
+- **Manual recovery:** call `tracker.reset()` if your app detects an external source of dropped keyups such as paste automation or dictation software.
+- **React and teardown:** `useHeldKeys`, `useHeldKeyCodes`, `useKeyHold`, and `useHotkeyHint` acquire the singleton only after client commit (returning empty values or `false` during SSR) and unsubscribe on unmount without disposing the shared singleton. Call `tracker.dispose()` (or `KeyStateTracker.resetInstance()` in tests) to remove listeners, clear state, and clear the singleton slot.

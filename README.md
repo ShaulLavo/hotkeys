@@ -1,30 +1,30 @@
-# hotkeys
+# @shaulavo/hotkeys
 
-Keyboard shortcuts, chords, and focus-aware keymaps for browser and terminal apps, with optional React hooks.
+Keyboard shortcuts, chords, focus-aware keymaps, and React hooks for browser and terminal apps. Requires Node `>=24`, and React `>=19.2.0` for `@shaulavo/hotkeys/react`.
 
-## Run from source
-
-```sh
-bun install --frozen-lockfile && bun run verify
+```bash
+bun add @shaulavo/hotkeys
 ```
 
-```ts
-import { createBrowserDispatcher, registerHotkey } from '@shaulavo/hotkeys'
-const keys = createBrowserDispatcher({
-  keymap: [
-    { keys: 'Mod+B', command: 'sidebar.toggle', context: 'Workspace' },
-    { keys: 'Mod+B', command: 'text.bold', context: 'Editor' },
-  ],
-})
-const ws = keys.createNode({ context: 'Workspace', commands: { 'sidebar.toggle': () => {} } })
-const ed = keys.createNode({ parent: ws, context: 'Editor', commands: { 'text.bold': () => {} } })
-const editor = document.body.appendChild(document.createElement('textarea'))
-keys.attachElement(ws, document.body)
-keys.attachElement(ed, editor)
-editor.focus()
-const save = registerHotkey('Mod+S', () => console.log('Save'))
-// Call save.dispose() and keys.dispose() on teardown.
+```tsx
+import { registerHotkey } from '@shaulavo/hotkeys'
+import { createHotkeysContext } from '@shaulavo/hotkeys/react'
+
+const App = createHotkeysContext<{ toggle: void; bold: void }>()
+const keymap = [
+  { keys: 'Mod+B', command: 'toggle', context: 'Workspace' },
+  { keys: 'Mod+B', command: 'bold', context: 'Editor' },
+] as const
+export const Workspace = (p: { onToggle: () => void; onBold: () => void }) => (
+  <App.HotkeysProvider keymap={keymap}>
+    <App.FocusScope context='Workspace' commands={{ toggle: p.onToggle }}>
+      <App.FocusScope context='Editor' commands={{ bold: p.onBold }}>
+        <textarea />
+      </App.FocusScope>
+    </App.FocusScope>
+  </App.HotkeysProvider>
+)
+registerHotkey('Mod+S', () => {}).dispose()
 ```
 
-[Get started](docs/getting-started.md) · [Overview](docs/overview.md) · [Concepts](packages/hotkeys/docs/concepts.md) · [API](packages/hotkeys/docs/api.md) · [React](packages/hotkeys/docs/api.md#react) · [Development](docs/development.md)
-[MIT](LICENSE). Forked from [TanStack Hotkeys](https://github.com/TanStack/hotkeys), with Tanner Linsley's copyright retained.
+[Getting started](docs/getting-started.md) · [Overview](docs/overview.md) · [API](packages/hotkeys/docs/api.md) · [Keymaps](packages/hotkeys/docs/keymaps.md) · [Development](docs/development.md)

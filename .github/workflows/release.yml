@@ -3,36 +3,53 @@ name: Release
 on:
   push:
     branches: [main]
+    paths:
+      - packages/hotkeys/package.json
+      - .github/workflows/release.yml
   workflow_dispatch:
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
   id-token: write
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-npm
   cancel-in-progress: false
 
 jobs:
   release:
-    name: Version or publish to npm
+    name: Verify and publish the npm tarball
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version-file: package.json
+          persist-credentials: false
 
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Check npm version
+        id: version
+        run: |
+          version=$(node -p 'require("./packages/hotkeys/package.json").version')
+          status=$(curl --retry 3 --silent --show-error --output /dev/null --write-out '%{http_code}' "https://registry.npmjs.org/@shaulavo%2fhotkeys/$version")
+          case "$status" in
+            200) printf 'publish=false\n' >> "$GITHUB_OUTPUT" ;;
+            404) printf 'publish=true\n' >> "$GITHUB_OUTPUT" ;;
+            *) echo "npm registry returned HTTP $status"; exit 1 ;;
+          esac
+
+      - uses: oven-sh/setup-bun@v2
+        if: steps.version.outputs.publish == 'true'
+        with:
+          bun-version-file: package.json
 
       - uses: actions/cache@v4
+        if: steps.version.outputs.publish == 'true'
         with:
           path: |
             ~/.bun/install/cache
@@ -40,24 +57,32 @@ jobs:
           key: hotkeys-bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'package.json', 'patches/*') }}
           restore-keys: hotkeys-bun-${{ runner.os }}-
 
-      - run: bun install --frozen-lockfile
-      - run: bun run verify
+      - if: steps.version.outputs.publish == 'true'
+        run: bun install --frozen-lockfile
 
-      - name: Configure npm authentication
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          set -euo pipefail
-          if [ -n "${NPM_TOKEN:-}" ]; then
-            npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
-          fi
+      - if: steps.version.outputs.publish == 'true'
+        run: bun run verify
 
-      - name: Create Release Pull Request or Publish to npm
-        uses: changesets/action@v1
+      - if: steps.version.outputs.publish == 'true'
+        run: bunx --no-install playwright install --with-deps --only-shell chromium
+
+      - if: steps.version.outputs.publish == 'true'
+        run: bun run test:browser
+
+      - uses: actions/upload-artifact@v4
+        if: steps.version.outputs.publish == 'true'
         with:
-          version: bunx changeset version && bun install --lockfile-only
-          publish: bun run release:publish
-          createGithubReleases: true
+          name: hotkeys-npm-${{ github.sha }}
+          path: release/
+          if-no-files-found: error
+
+      - name: Publish verified bytes
+        if: steps.version.outputs.publish == 'true'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_CONFIG_PROVENANCE: 'true'
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          cd release
+          sha256sum --check SHA256SUMS
+          test "$(node -p 'require("./manifest.json").revision')" = "$GITHUB_SHA"
+          tarball=$(node -p 'require("./manifest.json").artifacts[0].file')
+          npm publish "./$tarball" --access public --provenance

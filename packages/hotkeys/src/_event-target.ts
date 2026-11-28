@@ -12,29 +12,25 @@
  * Mod+S and Escape fire when the user has tabbed to a form button.
  */
 export function isInputElement(element: EventTarget | null): boolean {
-  if (!element) {
-    return false
-  }
-
-  if (element instanceof HTMLInputElement) {
+  if (!isDomElement(element)) return false
+  const DOM = element.ownerDocument.defaultView ?? globalThis
+  if (element instanceof DOM.HTMLInputElement) {
     const type = element.type.toLowerCase()
-    if (type === 'button' || type === 'submit' || type === 'reset') {
-      return false
-    }
-    return true
+    return type !== 'button' && type !== 'submit' && type !== 'reset'
   }
-
-  if (element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement) {
+  if (element instanceof DOM.HTMLTextAreaElement || element instanceof DOM.HTMLSelectElement)
     return true
-  }
+  return (
+    element instanceof DOM.HTMLElement && (element.isContentEditable || hasEditContext(element))
+  )
+}
 
-  // Check for contenteditable elements (includes "true", "", "plaintext-only",
-  // and inherited contenteditable from ancestor elements)
-  if (element instanceof HTMLElement && (element.isContentEditable || hasEditContext(element))) {
-    return true
-  }
+export function isDomNode(value: EventTarget | null): value is Node {
+  return value !== null && 'nodeType' in value
+}
 
-  return false
+export function isDomElement(value: EventTarget | null): value is Element {
+  return isDomNode(value) && value.nodeType === 1
 }
 
 export function hasEditContext(element: HTMLElement): boolean {
@@ -51,24 +47,9 @@ export function hasEditContext(element: HTMLElement): boolean {
 export function getActiveElementForListenerTarget(
   target: HTMLElement | Document | Window,
 ): Element | null {
-  if (typeof document === 'undefined') {
-    return null
-  }
-
-  // Document first (nodeType covers environments where `document instanceof Document` is false)
-  if (
-    (typeof Document !== 'undefined' && target instanceof Document) ||
-    (typeof Node !== 'undefined' && (target as Node).nodeType === Node.DOCUMENT_NODE)
-  ) {
-    return (target as Document).activeElement
-  }
-
-  if (typeof HTMLElement !== 'undefined' && target instanceof HTMLElement) {
-    return target.ownerDocument.activeElement ?? null
-  }
-
-  // Window (global or iframe): avoid relying on `instanceof Window` alone (test DOM quirks)
-  return (target as Window).document.activeElement ?? null
+  if ('activeElement' in target) return target.activeElement
+  if ('document' in target) return target.document.activeElement
+  return target.ownerDocument.activeElement
 }
 
 /**
@@ -112,43 +93,10 @@ export function isEventForTarget(
   event: KeyboardEvent,
   target: HTMLElement | Document | Window,
 ): boolean {
-  // For Document and Window, verify that our handler was indeed called for this target.
-  //
-  // Browser compatibility note:
-  // Per the DOM spec, event.currentTarget should equal the element the listener was
-  // attached to. However, some Chromium-based browsers (notably Brave) exhibit
-  // non-standard behavior where event.currentTarget is set to document.documentElement
-  // (<html>) instead of document when a listener is attached to document.
-  // This may be related to privacy/fingerprinting protections.
-  //
-  // To ensure cross-browser compatibility, we accept both the expected target
-  // and document.documentElement as valid currentTarget values.
-  // See: https://dom.spec.whatwg.org/#dom-event-currenttarget
-  if (target === document || target === window) {
-    return event.currentTarget === target || event.currentTarget === document.documentElement
-  }
-
-  // For Window, accept window, document, or document.documentElement (browser quirks)
-  if (target === window) {
-    return (
-      event.currentTarget === window ||
-      event.currentTarget === document ||
-      event.currentTarget === document.documentElement
-    )
-  }
-
-  // For HTMLElement, check if event originated from or bubbled to the element
-  if (target instanceof HTMLElement) {
-    // Check if the event's currentTarget is the target (capturing/bubbling)
-    if (event.currentTarget === target) {
-      return true
-    }
-
-    // Check if the event's target is a descendant of our target
-    if (event.target instanceof Node && target.contains(event.target)) {
-      return true
-    }
-  }
-
-  return false
+  const { currentTarget, target: origin } = event
+  if (currentTarget === target) return true
+  if ('document' in target)
+    return currentTarget === target.document || currentTarget === target.document.documentElement
+  if ('activeElement' in target) return currentTarget === target.documentElement
+  return isDomNode(origin) && target.contains(origin)
 }

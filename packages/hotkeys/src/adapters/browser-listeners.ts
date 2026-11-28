@@ -1,5 +1,5 @@
 import { keyInputFromKeyboardEvent } from './browser.js'
-import { hasEditContext, isInputElement } from '../_event-target.js'
+import { hasEditContext, isDomElement, isDomNode, isInputElement } from '../_event-target.js'
 import type { KeyInput } from '../key-input.js'
 import type { ChordOutcome, KeymapPlatform } from '../chords/types.js'
 import type { KeyEffects } from '../chords/runtime.js'
@@ -35,10 +35,13 @@ export function replayTextInput(input: KeyInput, event: KeyboardEvent): void {
   const text = event.key
   if (input.modifiers.ctrl || input.modifiers.meta || Array.from(text).length !== 1) return
   const field = event.target
-  if (!(field instanceof HTMLElement) || !isInputElement(field)) return
+  if (!isDomElement(field)) return
+  const document = field.ownerDocument
+  const DOM = document.defaultView ?? globalThis
+  if (!(field instanceof DOM.HTMLElement) || !isInputElement(field)) return
   if (hasEditContext(field)) {
     field.dispatchEvent(
-      new InputEvent('beforeinput', {
+      new DOM.InputEvent('beforeinput', {
         bubbles: true,
         cancelable: true,
         data: text,
@@ -47,15 +50,14 @@ export function replayTextInput(input: KeyInput, event: KeyboardEvent): void {
     )
     return
   }
-  const document = field.ownerDocument
   // execCommand keeps the field's undo history; happy-dom and old engines lack it.
   if (typeof document.execCommand === 'function' && document.execCommand('insertText', false, text))
     return
-  if (!(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement)) return
+  if (!(field instanceof DOM.HTMLInputElement || field instanceof DOM.HTMLTextAreaElement)) return
   const end = field.selectionEnd ?? field.value.length
   field.setRangeText(text, field.selectionStart ?? end, end, 'end')
   field.dispatchEvent(
-    new InputEvent('input', { bubbles: true, data: text, inputType: 'insertText' }),
+    new DOM.InputEvent('input', { bubbles: true, data: text, inputType: 'insertText' }),
   )
 }
 
@@ -73,6 +75,7 @@ export function attachKeyListeners(
 ): KeyListeners {
   const document = 'defaultView' in root ? root : root.ownerDocument
   const window = document.defaultView
+  const DOM = window ?? globalThis
   const processed = new WeakMap<KeyboardEvent, boolean>()
   const processing = new WeakSet<KeyboardEvent>()
   let disposed = false
@@ -106,8 +109,8 @@ export function attachKeyListeners(
     if (target().capturesKey(keyInputFromKeyboardEvent(event, platform))) claim(event)
   }
   function onKeyDown(event: Event) {
-    if (event.defaultPrevented || !('code' in event)) return
-    if (!(event instanceof KeyboardEvent)) return
+    if (event.defaultPrevented) return
+    if (!(event instanceof DOM.KeyboardEvent || event instanceof KeyboardEvent)) return
     claim(event)
   }
   function onKeyUp(event: KeyboardEvent) {
@@ -129,9 +132,9 @@ export function attachKeyListeners(
   }
   function onFocusOut(event: Event) {
     if (root === document) return
-    if (!(event instanceof FocusEvent)) return
+    if (!(event instanceof DOM.FocusEvent || event instanceof FocusEvent)) return
     const next = event.relatedTarget
-    if (next instanceof Node && root.contains(next)) return
+    if (isDomNode(next) && root.contains(next)) return
     target().cancel('superseded')
   }
   function dispose() {

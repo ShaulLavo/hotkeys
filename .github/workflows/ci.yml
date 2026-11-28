@@ -1,8 +1,6 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
@@ -43,3 +41,5 @@ jobs:
           restore-keys: hotkeys-bun-${{ runner.os }}-
       - run: bun install --frozen-lockfile
       - run: bun run verify
+      - run: bunx --no-install playwright install --with-deps --only-shell chromium
+      - run: bun run test:browser

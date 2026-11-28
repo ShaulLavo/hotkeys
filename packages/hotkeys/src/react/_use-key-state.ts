@@ -2,7 +2,7 @@ import { getKeyStateTracker } from '@shaulavo/hotkeys'
 import { useBrowserStore } from './_use-browser-store.js'
 import type { KeyStateTrackerState } from '@shaulavo/hotkeys'
 
-const EMPTY_KEY_STATE: KeyStateTrackerState = { heldKeys: [], heldCodes: {} }
+const EMPTY_KEY_STATE: KeyStateTrackerState = { heldKeys: [], heldCodes: {}, activeCodes: [] }
 const getKeyStateStore = () => getKeyStateTracker().store
 
 export function useKeyState<Selection>(

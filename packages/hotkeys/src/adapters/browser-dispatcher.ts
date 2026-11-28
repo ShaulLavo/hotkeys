@@ -2,7 +2,7 @@ import type { AnyCommands, CommandMap } from '../dispatch/commands.js'
 import type { HostedFocusNode } from '../dispatch/dispatcher.js'
 import { createDispatcher } from '../dispatch/dispatcher.js'
 import { detectPlatform } from '../platform.js'
-import { isInputElement } from '../_event-target.js'
+import { isDomElement, isInputElement } from '../_event-target.js'
 import { attachKeyListeners, browserKeyEffects, replayTextInput } from './browser-listeners.js'
 import type { Dispatcher, DispatcherOptions, FocusNode } from '../dispatch/dispatcher.js'
 import type { KeyResetReason } from './browser-listeners.js'
@@ -88,7 +88,7 @@ export function createBrowserDispatcher<Commands extends CommandMap = AnyCommand
     notifyObservers((observer) => observer.beforeKey(event))
     if (!nodes.size || event.type !== 'keydown') return
     for (const target of event.composedPath()) {
-      const node = target instanceof Element ? attachedNode(target) : undefined
+      const node = isDomElement(target) ? attachedNode(target) : undefined
       if (node) return dispatcher.focus(node)
     }
     dispatcher.focus(null)
@@ -125,7 +125,8 @@ export function createBrowserDispatcher<Commands extends CommandMap = AnyCommand
   function parentElement(element: Element) {
     if (element.parentElement) return element.parentElement
     const root = element.getRootNode()
-    return root instanceof ShadowRoot ? root.host : null
+    const DOM = element.ownerDocument.defaultView ?? globalThis
+    return root instanceof DOM.ShadowRoot ? root.host : null
   }
   function observeKeys(observer: BrowserKeyObserver) {
     if (disposed) return () => {}
@@ -153,11 +154,17 @@ export function createBrowserDispatcher<Commands extends CommandMap = AnyCommand
   function dispose() {
     if (disposed) return
     disposed = true
-    dispatcher.dispose()
-    listeners.dispose()
-    reset('dispose')
-    observers.clear()
-    nodes.clear()
+    try {
+      dispatcher.dispose()
+    } finally {
+      listeners.dispose()
+      nodes.clear()
+      try {
+        reset('dispose')
+      } finally {
+        observers.clear()
+      }
+    }
   }
   return {
     ...dispatcher,

@@ -639,9 +639,12 @@ export function createChordRuntime<Payload, Context, Source>(
     if (disposed) return
     disposed = true
     claimedKeys.clear()
-    cancel('disposed')
-    pendingListeners.clear()
-    syncCapture()
+    try {
+      cancel('disposed')
+    } finally {
+      pendingListeners.clear()
+      syncCapture()
+    }
   }
   return {
     handleKey,

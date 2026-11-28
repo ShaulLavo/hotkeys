@@ -14,6 +14,7 @@ export interface KeyStateTrackerState {
    * Useful for debugging which physical key was pressed.
    */
   heldCodes: Record<string, string>
+  readonly activeCodes: readonly string[]
 }
 
 /**
@@ -23,6 +24,7 @@ function getDefaultKeyStateTrackerState(): KeyStateTrackerState {
   return {
     heldKeys: [],
     heldCodes: {},
+    activeCodes: [],
   }
 }
 
@@ -93,10 +95,7 @@ export class KeyStateTracker {
    * Resets the singleton instance. Useful for testing.
    */
   static resetInstance(): void {
-    if (KeyStateTracker.#instance) {
-      KeyStateTracker.#instance.dispose()
-      KeyStateTracker.#instance = null
-    }
+    KeyStateTracker.#instance?.dispose()
   }
 
   /**
@@ -167,15 +166,18 @@ export class KeyStateTracker {
    * Syncs the internal Set to the Store state.
    */
   #syncState(): void {
-    const heldKeys = Array.from(
-      new Set(Array.from(this.#heldEntries.values(), (entry) => entry.key)),
-    )
-    const heldCodes = Object.fromEntries(
-      Array.from(this.#heldEntries.values(), (entry) => [entry.key, entry.code]),
-    )
+    const keys = new Set<string>()
+    const codes = new Map<string, string>()
+    const activeCodes: string[] = []
+    for (const { key, code } of this.#heldEntries.values()) {
+      keys.add(key)
+      codes.set(key, code)
+      if (code) activeCodes.push(code)
+    }
     this.store.setState(() => ({
-      heldKeys,
-      heldCodes,
+      heldKeys: Array.from(keys),
+      heldCodes: Object.fromEntries(codes),
+      activeCodes,
     }))
   }
 
@@ -223,8 +225,7 @@ export class KeyStateTracker {
    * @returns True if the key is currently held
    */
   isKeyHeld(key: string): boolean {
-    const normalizedKey = normalizeKeyName(key)
-    return Array.from(this.#heldEntries.values()).some((entry) => entry.key === normalizedKey)
+    return isHeld(this.store.state, key)
   }
 
   /**
@@ -255,9 +256,9 @@ export class KeyStateTracker {
   }
 
   dispose(): void {
+    if (KeyStateTracker.#instance === this) KeyStateTracker.#instance = null
     this.#removeListeners()
-    this.#heldEntries.clear()
-    this.store.setState(() => getDefaultKeyStateTrackerState())
+    this.reset()
   }
 }
 
@@ -267,4 +268,11 @@ export class KeyStateTracker {
  */
 export function getKeyStateTracker(): KeyStateTracker {
   return KeyStateTracker.getInstance()
+}
+
+export function isHeld(state: KeyStateTrackerState, key: string): boolean {
+  const code = /^\[([A-Za-z][A-Za-z0-9]*)\]$/.exec(key)?.[1]
+  return code === undefined
+    ? state.heldKeys.includes(normalizeKeyName(key))
+    : state.activeCodes.includes(code)
 }

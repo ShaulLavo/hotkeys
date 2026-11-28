@@ -1,4 +1,5 @@
 import { useKeyState } from './_use-key-state.js'
+import { normalizeKeyName } from '@shaulavo/hotkeys'
 import type { IndividualKey } from '@shaulavo/hotkeys'
 
 /**
@@ -41,9 +42,9 @@ import type { IndividualKey } from '@shaulavo/hotkeys'
  * ```
  */
 export function useKeyHold(key: IndividualKey): boolean {
-  const normalizedKey = key.toLowerCase()
-
+  const code = /^\[([A-Za-z][A-Za-z0-9]*)\]$/.exec(key)?.[1]
+  const logical = normalizeKeyName(key)
   return useKeyState((state) =>
-    state.heldKeys.some((heldKey) => heldKey.toLowerCase() === normalizedKey),
+    code === undefined ? state.heldKeys.includes(logical) : state.activeCodes.includes(code),
   )
 }

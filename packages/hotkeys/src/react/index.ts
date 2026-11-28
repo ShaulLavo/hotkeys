@@ -1,18 +1,31 @@
-// Re-export everything from the core package
-export { formatForDisplay, getHotkeyRegistry } from '@shaulavo/hotkeys'
-
-// provider
-export * from './HotkeysProvider.js'
-
-// React-specific exports
-export * from './useHotkey.js'
-export * from './useHotkeys.js'
-export * from './useHeldKeys.js'
-export * from './useHeldKeyCodes.js'
-export * from './useKeyHold.js'
-export * from './useHotkeySequence.js'
-export * from './useHotkeySequences.js'
-export * from './useHotkeyRecorder.js'
-export * from './useHotkeyRegistrations.js'
-export * from './useHotkeySequenceRecorder.js'
-export * from './useHotkeyHint.js'
+export {
+  createHotkeysContext,
+  FocusScope,
+  HotkeysProvider,
+  useFocusNode,
+  useHotkeysDispatcher,
+  usePendingChord,
+} from './HotkeysProvider.js'
+export type {
+  FocusScopeProps,
+  HotkeysProviderOptions,
+  HotkeysProviderProps,
+  TypedHotkeysContext,
+  UseFocusNodeOptions,
+  UseFocusNodeResult,
+} from './HotkeysProvider.js'
+export { useHotkey } from './useHotkey.js'
+export type { UseHotkeyOptions } from './useHotkey.js'
+export { useHotkeySequence } from './useHotkeySequence.js'
+export { useHotkeys } from './useHotkeys.js'
+export type { UseHotkeyDefinition } from './useHotkeys.js'
+export { useHotkeyRegistrations } from './useHotkeyRegistrations.js'
+export type { HotkeyRegistrationsResult } from './useHotkeyRegistrations.js'
+export { useHeldKeys } from './useHeldKeys.js'
+export { useHeldKeyCodes } from './useHeldKeyCodes.js'
+export { useKeyHold } from './useKeyHold.js'
+export { useHotkeyHint } from './useHotkeyHint.js'
+export { useHotkeyRecorder } from './useHotkeyRecorder.js'
+export type { ReactHotkeyRecorder } from './useHotkeyRecorder.js'
+export { useHotkeySequenceRecorder } from './useHotkeySequenceRecorder.js'
+export type { ReactHotkeySequenceRecorder } from './useHotkeySequenceRecorder.js'

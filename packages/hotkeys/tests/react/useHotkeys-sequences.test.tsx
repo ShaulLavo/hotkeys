@@ -3,14 +3,14 @@ import { act, renderHook } from '@testing-library/react'
 import { getHotkeyRegistry } from '../../src/index.js'
 import { useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { useHotkeySequences } from '../../src/react/useHotkeySequences'
-import type { UseHotkeySequenceDefinition } from '../../src/react/useHotkeySequences'
+import { useHotkeys } from '../../src/react/useHotkeys'
+import type { UseHotkeyDefinition } from '../../src/react/useHotkeys'
 
 function dispatchKey(key: string) {
   document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
 }
 
-describe('useHotkeySequences', () => {
+describe('useHotkeys', () => {
   beforeEach(() => {})
 
   afterEach(() => {})
@@ -20,7 +20,7 @@ describe('useHotkeySequences', () => {
     const b = vi.fn()
 
     renderHook(() =>
-      useHotkeySequences([
+      useHotkeys([
         { sequence: ['G', 'G'], callback: a },
         { sequence: ['D', 'D'], callback: b },
       ]),
@@ -34,7 +34,7 @@ describe('useHotkeySequences', () => {
     const dd = vi.fn()
 
     renderHook(() =>
-      useHotkeySequences([
+      useHotkeys([
         { sequence: ['G', 'G'], callback: gg },
         { sequence: ['D', 'D'], callback: dd },
       ]),
@@ -53,7 +53,7 @@ describe('useHotkeySequences', () => {
 
   it('should unregister all sequences on unmount', () => {
     const { unmount } = renderHook(() =>
-      useHotkeySequences([
+      useHotkeys([
         { sequence: ['G', 'G'], callback: vi.fn() },
         { sequence: ['D', 'D'], callback: vi.fn() },
       ]),
@@ -65,13 +65,13 @@ describe('useHotkeySequences', () => {
   })
 
   it('should handle an empty array as a no-op', () => {
-    renderHook(() => useHotkeySequences([]))
+    renderHook(() => useHotkeys([]))
     expect(getHotkeyRegistry().registrations.state.size).toBe(0)
   })
 
   it('should skip definitions with an empty sequence', () => {
     renderHook(() =>
-      useHotkeySequences([
+      useHotkeys([
         { sequence: [], callback: vi.fn() },
         { sequence: ['G', 'G'], callback: vi.fn() },
       ]),
@@ -84,7 +84,7 @@ describe('useHotkeySequences', () => {
     const disabledCb = vi.fn()
 
     renderHook(() =>
-      useHotkeySequences([
+      useHotkeys([
         { sequence: ['G', 'G'], callback: enabledCb },
         {
           sequence: ['D', 'D'],
@@ -115,7 +115,7 @@ describe('useHotkeySequences', () => {
     const yy = vi.fn()
 
     const { rerender } = renderHook(
-      ({ defs }: { defs: Array<UseHotkeySequenceDefinition> }) => useHotkeySequences(defs),
+      ({ defs }: { defs: Array<UseHotkeyDefinition> }) => useHotkeys(defs),
       {
         initialProps: {
           defs: [
@@ -151,7 +151,7 @@ describe('useHotkeySequences', () => {
 
     const { rerender } = renderHook(
       ({ target }: { target: HTMLElement }) =>
-        useHotkeySequences([{ sequence: ['G', 'G'], callback, options: { target } }]),
+        useHotkeys([{ sequence: ['G', 'G'], callback, options: { target } }]),
       { initialProps: { target: targetA } },
     )
 
@@ -177,7 +177,7 @@ describe('useHotkeySequences', () => {
 
       const { result, rerender } = renderHook(() => {
         const [count, setCount] = useState(0)
-        useHotkeySequences([
+        useHotkeys([
           {
             sequence: ['G', 'G'],
             callback: () => {
@@ -216,7 +216,7 @@ describe('useHotkeySequences', () => {
 
       const { rerender } = renderHook(
         ({ enabled }: { enabled: boolean }) =>
-          useHotkeySequences([{ sequence: ['G', 'G'], callback, options: { enabled } }]),
+          useHotkeys([{ sequence: ['G', 'G'], callback, options: { enabled } }]),
         { initialProps: { enabled: true } },
       )
 
@@ -243,7 +243,7 @@ describe('useHotkeySequences', () => {
 
       const { rerender } = renderHook(
         ({ enabled }: { enabled: boolean }) =>
-          useHotkeySequences([{ sequence: ['G', 'G'], callback, options: { enabled } }]),
+          useHotkeys([{ sequence: ['G', 'G'], callback, options: { enabled } }]),
         { initialProps: { enabled: true } },
       )
 

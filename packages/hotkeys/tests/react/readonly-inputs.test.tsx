@@ -3,11 +3,9 @@ import { formatHotkeySequence } from '../../src/format.js'
 import { getHotkeyRegistry } from '../../src/index.js'
 import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
 import { useHotkeySequence } from '../../src/react/useHotkeySequence.js'
-import { useHotkeySequences } from '../../src/react/useHotkeySequences.js'
 import { useHotkeys } from '../../src/react/useHotkeys.js'
 import type { Hotkey, HotkeySequence } from '../../src/index.js'
 import type { ReactHotkeySequenceRecorder } from '../../src/react/useHotkeySequenceRecorder.js'
-import type { UseHotkeySequenceDefinition } from '../../src/react/useHotkeySequences.js'
 import type { UseHotkeyDefinition } from '../../src/react/useHotkeys.js'
 
 afterEach(() => {
@@ -34,7 +32,7 @@ describe('readonly registration inputs', () => {
     renderHook(() => {
       useHotkeySequence(sequence, onSequence)
       useHotkeys(hotkeys)
-      useHotkeySequences(sequences)
+      useHotkeys(sequences)
     })
 
     press('g')
@@ -54,10 +52,9 @@ describe('readonly registration inputs', () => {
     const callback = vi.fn()
     const sequence: Hotkey[] = ['G', 'G']
     const hotkeys: Array<UseHotkeyDefinition> = [{ hotkey: 'Escape', callback }]
-    const sequences: Array<UseHotkeySequenceDefinition> = [{ sequence: ['D'], callback }]
     const mutableSequence: Hotkey[] = ['D']
     mutableSequence.push('D')
-    sequences[0]!.sequence = mutableSequence
+    const sequences: Array<UseHotkeyDefinition> = [{ sequence: mutableSequence, callback }]
 
     expectTypeOf<HotkeySequence>().toEqualTypeOf<readonly import('../../src').HotkeyStroke[]>()
     expectTypeOf<ReactHotkeySequenceRecorder['steps']>().toEqualTypeOf<Array<Hotkey>>()
@@ -69,7 +66,7 @@ describe('readonly registration inputs', () => {
     renderHook(() => {
       useHotkeySequence(sequence, callback)
       useHotkeys(hotkeys)
-      useHotkeySequences(sequences)
+      useHotkeys(sequences)
     })
 
     expect(getHotkeyRegistry().registrations.state.size).toBe(3)

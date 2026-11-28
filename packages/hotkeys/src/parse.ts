@@ -1,5 +1,5 @@
 import { assertLogicalKey, splitHotkeyParts } from './_keyboard-event.js'
-import { MODIFIER_ALIASES, MODIFIER_ORDER, normalizeKeyName } from './constants.js'
+import { MODIFIER_ORDER, normalizeKeyName } from './constants.js'
 import { detectPlatform } from './platform.js'
 import { keyInputFromKeyboardEvent } from './adapters/browser.js'
 import { isShortcutSequence, modifierAlias, requireShortcut } from './shortcut.js'
@@ -155,7 +155,7 @@ export function normalizeRegisterableHotkey(
  * @param key - Key name or alias (e.g. from a hotkey string or `event.key`)
  * @returns True if the string is a recognized modifier
  */
-export function isModifierKey(key: string): key is keyof typeof MODIFIER_ALIASES {
+export function isModifierKey(key: string): boolean {
   return modifierAlias(key) !== undefined
 }
 

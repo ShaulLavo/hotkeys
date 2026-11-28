@@ -1,10 +1,10 @@
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { getHotkeyRegistry } from '@shaulavo/hotkeys'
+import { useRegistryOptions } from './_registry-context.js'
 import { useBrowserStore } from './_use-browser-store.js'
 import type { HotkeyRegistrationView } from '@shaulavo/hotkeys'
 
 const EMPTY_REGISTRATIONS: ReadonlyMap<string, HotkeyRegistrationView> = new Map()
-const getRegistrationsStore = () => getHotkeyRegistry().registrations
 
 export interface HotkeyRegistrationsResult {
   /** Single-stroke registrations (public view, no callbacks) */
@@ -25,6 +25,11 @@ export interface HotkeyRegistrationsResult {
  * ```
  */
 export function useHotkeyRegistrations(): HotkeyRegistrationsResult {
+  const { registry } = useRegistryOptions()
+  const getRegistrationsStore = useCallback(
+    () => (registry ?? getHotkeyRegistry()).registrations,
+    [registry],
+  )
   const registrations = useBrowserStore(
     getRegistrationsStore,
     EMPTY_REGISTRATIONS,
