@@ -1,5 +1,6 @@
 import { StrictMode, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
+import { createPortal, flushSync } from 'react-dom'
 import type { RefObject } from 'react'
 import {
   createBrowserDispatcher,
@@ -16,6 +17,11 @@ const keymap: readonly KeymapEntry<Commands>[] = [
   { keys: 'Mod+B', command: 'editor', context: 'Editor' },
   { keys: 'Mod+K Mod+C', command: 'chord', context: 'Workspace' },
 ]
+
+const shadowHost = document.body.appendChild(document.createElement('div'))
+const shadow = shadowHost.attachShadow({ mode: 'open' })
+const slottedInput = shadowHost.appendChild(document.createElement('input'))
+slottedInput.setAttribute('aria-label', 'Slotted editor')
 
 const frames = ['first', 'second'].map((id) => {
   const frame = document.body.appendChild(document.createElement('iframe'))
@@ -51,6 +57,33 @@ function EditorField({ target }: { target: RefObject<HTMLTextAreaElement | null>
   )
 }
 
+function SlottedEditor() {
+  const [version, setVersion] = useState(0)
+  const { ref, dispatcher } = App.useFocusNode({
+    context: 'Editor',
+    commands: { editor: () => log('slotted-editor') },
+  })
+
+  function reattach() {
+    flushSync(() => setVersion((current) => current + 1))
+    dispatcher?.dispatchCommand('editor')
+  }
+
+  return (
+    <>
+      <button onMouseDown={(event) => event.preventDefault()} onClick={reattach}>
+        Reattach slotted editor
+      </button>
+      {createPortal(
+        <div ref={(element) => ref(element)} data-version={version}>
+          <slot />
+        </div>,
+        shadow,
+      )}
+    </>
+  )
+}
+
 function Status() {
   const pending = App.usePendingChord()
   const left = useKeyHold('[ShiftLeft]')
@@ -78,6 +111,7 @@ function Workspace() {
     >
       <button>Workspace</button>
       <Editor />
+      <SlottedEditor />
       <Status />
     </App.FocusScope>
   )
@@ -114,10 +148,12 @@ document.querySelector('body > button')!.addEventListener('click', () => {
   const after = listeners()
   const ownedReleased = JSON.stringify(after) === JSON.stringify(baseline)
   if (!ownedReleased) console.error('Listener snapshot:', JSON.stringify({ baseline, after }))
-  const nodesReleased = external.nodeForElement(editor) === null
+  const nodesReleased =
+    external.nodeForElement(editor) === null && external.nodeForElement(slottedInput) === null
   const rowsReleased = frames.every(({ registry }) => registry.registrations.state.size === 0)
   const externalRetained = external.dispatchCommandFrom(sentinel, 'workspace')
   external.dispose()
+  shadowHost.remove()
   for (const { frame, registry } of frames) {
     const handle = registry.register('F9', () => {})
     handle.dispose()

@@ -108,10 +108,18 @@ export function createBrowserDispatcher<Commands extends CommandMap = AnyCommand
     }
   }
   function syncAttachedFocus(element: Element) {
-    const active = element.ownerDocument.activeElement
-    if (!active || !element.contains(active)) return
-    const next = nodeForElement(active)
-    if (!next) return
+    let next: FocusNode<KeyboardEvent, Commands> | undefined
+    for (
+      let active = activeElementIn(element.ownerDocument);
+      active;
+      active = composedParentElement(active)
+    ) {
+      next ??= attachedNode(active)
+      if (active === element && next) return focusIfCompatible(next)
+    }
+  }
+
+  function focusIfCompatible(next: FocusNode<KeyboardEvent, Commands>) {
     const current = dispatcher.focused()
     if (!current) return dispatcher.focus(next)
     for (let ancestor: HostedFocusNode | null = next; ancestor; ancestor = ancestor.parent) {
@@ -128,17 +136,11 @@ export function createBrowserDispatcher<Commands extends CommandMap = AnyCommand
   }
   function nodeForElement(element: Element) {
     if (disposed) return null
-    for (let current: Element | null = element; current; current = parentElement(current)) {
+    for (let current: Element | null = element; current; current = composedParentElement(current)) {
       const node = attachedNode(current)
       if (node) return node
     }
     return null
-  }
-  function parentElement(element: Element) {
-    if (element.parentElement) return element.parentElement
-    const root = element.getRootNode()
-    const DOM = element.ownerDocument.defaultView ?? globalThis
-    return root instanceof DOM.ShadowRoot ? root.host : null
   }
   function observeKeys(observer: BrowserKeyObserver) {
     if (disposed) return () => {}
@@ -192,4 +194,18 @@ export function createBrowserDispatcher<Commands extends CommandMap = AnyCommand
     dispose,
     [Symbol.dispose]: dispose,
   }
+}
+
+function activeElementIn(doc: Document): Element | null {
+  let active = doc.activeElement
+  while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement
+  return active
+}
+
+function composedParentElement(element: Element): Element | null {
+  if (element.assignedSlot) return element.assignedSlot
+  if (element.parentElement) return element.parentElement
+  const root = element.getRootNode()
+  const DOM = element.ownerDocument.defaultView ?? globalThis
+  return root instanceof DOM.ShadowRoot ? root.host : null
 }

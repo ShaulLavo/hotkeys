@@ -1433,3 +1433,43 @@ it.each([false, true])(
     expect(otherCommand).toHaveBeenCalledTimes(intervene ? 1 : 0)
   },
 )
+
+it('restores focused dispatch after a ref reattaches inside a shadow root', () => {
+  using dispatcher = createBrowserDispatcher()
+  const command = vi.fn()
+  const host = document.body.appendChild(document.createElement('div'))
+  const shadow = host.attachShadow({ mode: 'open' })
+
+  function Owner({ version }: { version: number }) {
+    const { ref } = useFocusNode({ commands: { go: command } })
+    return createPortal(
+      <div data-version={version} ref={(element) => ref(element)}>
+        <input />
+      </div>,
+      shadow,
+    )
+  }
+
+  const app = (version: number) => (
+    <HotkeysProvider dispatcher={dispatcher}>
+      <Owner version={version} />
+    </HotkeysProvider>
+  )
+  const view = render(app(1))
+  try {
+    const input = shadow.querySelector('input')!
+    const previous = dispatcher.nodeForElement(input)
+    expect(previous).not.toBeNull()
+    input.focus()
+    dispatcher.focus(previous)
+
+    view.rerender(app(2))
+    expect(dispatcher.nodeForElement(input)).toBe(previous)
+    expect(dispatcher.focused()).toBe(previous)
+    expect(dispatcher.dispatchCommand('go')).toBe(true)
+    expect(command).toHaveBeenCalledOnce()
+  } finally {
+    view.unmount()
+    host.remove()
+  }
+})

@@ -104,11 +104,18 @@ async function runScenario(page: Page) {
   await page.keyboard.up('ShiftRight')
   await textEquals(shifts, '00')
 
+  const slotted = page.getByRole('textbox', { name: 'Slotted editor' })
+  await slotted.focus()
+  await page.keyboard.press('Control+b')
+  await page.getByRole('button', { name: 'Reattach slotted editor' }).click()
+  assert.equal(await slotted.evaluate((input) => input.ownerDocument.activeElement === input), true)
+  await textEquals(log, 'workspace\neditor\neditor\nchord\nslotted-editor\nslotted-editor\n')
+
   const first = page.frameLocator('#first').getByRole('button')
   const second = page.frameLocator('#second').getByRole('button')
   await first.focus()
   await page.keyboard.press('F8')
-  const once = 'workspace\neditor\neditor\nchord\nregistered\n'
+  const once = 'workspace\neditor\neditor\nchord\nslotted-editor\nslotted-editor\nregistered\n'
   await textEquals(log, once)
 
   await page.getByRole('button', { name: 'Swap' }).click()
