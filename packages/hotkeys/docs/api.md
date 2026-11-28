@@ -242,11 +242,13 @@ Passing both `dispatcher` and `keymap` (or owned options alongside `dispatcher`)
 
 ##### Composed focus registrations
 
-When multiple registrations share one `(element, parent)` on one dispatcher, the shared node merges their contexts in attachment order on every capture. Identifiers combine across active registrations, and later values overwrite earlier entries for the same key.
+When multiple registrations share one `(element, parent)` on one dispatcher, the shared node sorts them structurally. Deeper React focus scopes come first. Within the same scope depth, each hook instance's first committed mount order breaks ties, with earlier mounts first.
 
-The dispatcher tries handlers on the shared node in command registration order. If a handler returns `false`, the dispatcher tries the next handler for that command. Any other return value claims the command and stops dispatch. A handler keeps its position if its function changes while the command stays present. If a registration removes a handler and adds a new handler for that command later, the new handler registers at the end.
+Context merging and handler trials both use this structural order. On every capture, the shared node merges active contexts in that order. Identifiers combine across active registrations, and later values in the order overwrite earlier values for the same key. During dispatch, the dispatcher tries handlers for a command in that order. If a handler returns `false`, the dispatcher tries the next handler for that command. Any other return value claims the command and stops dispatch.
 
-When `target` is omitted, `<FocusScope>` attaches its wrapper `<div>` before it invokes its forwarded `ref`. A hook that uses that `ref` with the same parent joins after the scope, so the hook's context values merge after the scope's values. Scope handlers present when `<FocusScope>` attaches register before the hook's handlers. If `<FocusScope>` adds a handler for a command that a mounted forwarded hook already handles, the new handler runs after the hook's handler.
+A registration keeps its structural position when it replaces a handler, adds a command already present on the shared node, or removes and re-adds a command. That position survives when `<Activity>` hides and reveals the subtree, or when the `ref` reattaches.
+
+When `target` is omitted, `<FocusScope>` attaches its wrapper `<div>` before it invokes its forwarded `ref`, so synchronous `dispatcher.nodeForElement` lookup finds the focus node. A default `<FocusScope>` places its own registration one level deeper than its enclosing scope. Because deeper scopes come first, a hook on the enclosing owner that uses the forwarded `ref` with the same parent comes later. The hook's context values therefore overwrite matching keys from the scope, and the scope's handlers run before the hook's handlers.
 
 #### `useHotkeysDispatcher()` and `usePendingChord()`
 

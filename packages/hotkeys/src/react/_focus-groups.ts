@@ -1,3 +1,5 @@
+import { compareFocusOrder, focusNodeControl } from '../dispatch/_focus-node-control.js'
+import type { FocusOrder } from '../dispatch/_focus-node-control.js'
 import { createKeyContext, parseKeyContext } from '@shaulavo/hotkeys'
 import type {
   AnyCommands,
@@ -28,14 +30,15 @@ export type FocusAttachment<Commands extends CommandMap> = {
 }
 
 type GroupMember = {
+  readonly order: FocusOrder
   readonly readContext: () => FocusNodeContext | undefined
   readonly resolve: () => void
 }
 
 type Group<Commands extends CommandMap> = {
   readonly node: FocusNode<KeyboardEvent, Commands>
-  readonly members: Set<GroupMember>
-  readonly detachElement: () => void
+  readonly members: GroupMember[]
+  detachElement: (() => void) | undefined
 }
 type Parent<Commands extends CommandMap> = FocusNode<KeyboardEvent, Commands> | null
 type ElementGroups<Commands extends CommandMap> = WeakMap<
@@ -44,29 +47,38 @@ type ElementGroups<Commands extends CommandMap> = WeakMap<
 >
 
 const dispatchers = new WeakMap<object, ElementGroups<AnyCommands>>()
+let lastMountSequence = 0
+
+export function nextFocusMountSequence(): number {
+  return ++lastMountSequence
+}
 
 export function attachFocusNode<Commands extends CommandMap>(
   dispatcher: BrowserDispatcher<Commands>,
   element: Element,
   parent: Parent<Commands>,
+  order: FocusOrder,
   resolve: () => void,
 ): FocusAttachment<Commands> {
   const groups = groupsFor(dispatcher)
   let parents = groups.get(element)
   if (!parents) groups.set(element, (parents = new Map()))
-  let group = parents.get(parent)
-  if (!group) parents.set(parent, (group = createGroup(dispatcher, element, parent)))
-  const { node, members, detachElement } = group
+  const previous = parents.get(parent)
+  const group = reusableGroup(previous) ?? createGroup(dispatcher, parent)
+  parents.set(parent, group)
+  const { node, members } = group
+  group.detachElement ??= dispatcher.attachElement(node, element)
   const handlers = new Map<CommandName<Commands>, () => void>()
   let committedContext: FocusContextReader | undefined
   let committedCommands: FocusCommands<Commands> | undefined
   const member: GroupMember = {
+    order,
     resolve,
     readContext: () =>
       typeof committedContext === 'function' ? committedContext() : committedContext,
   }
-  // Attachment order also defines context merge order and initial handler order.
-  members.add(member)
+  members.push(member)
+  members.sort((left, right) => compareFocusOrder(left.order, right.order))
 
   function sync(
     context: FocusContextReader | undefined,
@@ -82,34 +94,59 @@ export function attachFocusNode<Commands extends CommandMap>(
     for (const raw of Object.keys(commands ?? {})) {
       const command = raw as CommandName<Commands>
       if (handlers.has(command) || !commands?.[command]) continue
+      const handler: CommandHandler<KeyboardEvent, Commands, typeof command> = (event) => {
+        const handle = committedCommands?.[command]
+        return handle ? handle(event) : false
+      }
+      const control = node[focusNodeControl]
       handlers.set(
         command,
-        node.handle(command, (event) => {
-          const handle = committedCommands?.[command]
-          return handle ? handle(event) : false
-        }),
+        control ? control.handle(command, handler, order) : node.handle(command, handler),
       )
     }
   }
 
   function detach() {
-    if (!members.delete(member)) return
+    const index = members.indexOf(member)
+    if (index < 0) return
+    members.splice(index, 1)
     for (const remove of handlers.values()) remove()
     handlers.clear()
-    if (members.size > 0) return
-    parents!.delete(parent)
-    if (!parents!.size) groups.delete(element)
-    detachElement()
-    node.remove()
+    if (members.length > 0) return
+
+    group.detachElement?.()
+    group.detachElement = undefined
+    const control = node[focusNodeControl]
+    if (!control) {
+      discardEmptyGroup()
+      return
+    }
+    // Ownership and handlers end synchronously. Keep the inert identity for same-turn ref churn.
+    control.suspend()
+    queueMicrotask(discardEmptyGroup)
   }
 
   return { node, sync, detach, refreshPeers }
 
   function refreshPeers() {
-    for (const peer of Array.from(members)) {
-      if (peer !== member && members.has(peer)) peer.resolve()
+    for (const peer of members.slice()) {
+      if (peer !== member && members.includes(peer)) peer.resolve()
     }
   }
+
+  function discardEmptyGroup() {
+    if (members.length > 0) return
+    node.remove()
+    if (parents!.get(parent) !== group) return
+    parents!.delete(parent)
+    if (!parents!.size) groups.delete(element)
+  }
+}
+
+function reusableGroup<Commands extends CommandMap>(group: Group<Commands> | undefined) {
+  if (!group) return undefined
+  if (group.detachElement || group.node[focusNodeControl]?.resume()) return group
+  return undefined
 }
 
 function groupsFor<Commands extends CommandMap>(
@@ -123,15 +160,14 @@ function groupsFor<Commands extends CommandMap>(
 
 function createGroup<Commands extends CommandMap>(
   dispatcher: BrowserDispatcher<Commands>,
-  element: Element,
   parent: Parent<Commands>,
 ): Group<Commands> {
-  const members = new Set<GroupMember>()
+  const members: GroupMember[] = []
   const node = dispatcher.createNode({ parent, readContext: () => mergeContexts(members) })
-  return { node, members, detachElement: dispatcher.attachElement(node, element) }
+  return { node, members, detachElement: undefined }
 }
 
-function mergeContexts(members: ReadonlySet<GroupMember>): KeyContext {
+function mergeContexts(members: readonly GroupMember[]): KeyContext {
   const identifiers = new Set<string>()
   const values = new Map<string, string>()
   for (const member of members) {

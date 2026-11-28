@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from 'react'
-import { createPortal } from 'react-dom'
+import { createPortal, flushSync } from 'react-dom'
 import { act, fireEvent, render, renderHook, waitFor } from '@testing-library/react'
 import { expect, expectTypeOf, it, vi } from 'vitest'
 import { createBrowserDispatcher, createHotkeyRegistry, parseShortcut } from '../../src/index.js'
@@ -1051,7 +1051,7 @@ it('resolves a scope’s committed parent before attaching a keyed child', () =>
   }
 })
 
-it('offers added or re-added composed handlers after existing handlers', () => {
+it('keeps structural precedence when composed handlers are added or re-added', () => {
   using dispatcher = createBrowserDispatcher({ keymap: [{ keys: 'F8', command: 'go' }] })
   const calls: string[] = []
 
@@ -1080,9 +1080,12 @@ it('offers added or re-added composed handlers after existing handlers', () => {
   )
   const view = render(app(false, true))
   const target = view.getByRole('button')
+  press(target, 'F8', { code: 'F8' })
+  expect(calls.splice(0)).toEqual(['forwarded'])
+
   view.rerender(app(true, true))
   press(target, 'F8', { code: 'F8' })
-  expect(calls.splice(0)).toEqual(['forwarded', 'scope'])
+  expect(calls.splice(0)).toEqual(['scope'])
 
   view.rerender(app(true, false))
   view.rerender(app(true, true))
@@ -1090,9 +1093,12 @@ it('offers added or re-added composed handlers after existing handlers', () => {
   expect(calls.splice(0)).toEqual(['scope'])
 
   view.rerender(app(false, true))
+  press(target, 'F8', { code: 'F8' })
+  expect(calls.splice(0)).toEqual(['forwarded'])
+
   view.rerender(app(true, true))
   press(target, 'F8', { code: 'F8' })
-  expect(calls).toEqual(['forwarded', 'scope'])
+  expect(calls).toEqual(['scope'])
 })
 
 it('does not recreate nested nodes while unmounting an external scope', () => {
@@ -1279,4 +1285,99 @@ it('attaches a revealed Activity scope before its forwarded ref', async () => {
   press(target, 'F8', { code: 'F8' })
   expect(scopeCommand).toHaveBeenCalledOnce()
   expect(forwardedCommand).not.toHaveBeenCalled()
+})
+
+it('keeps composed scope precedence across consecutive synchronous Activity commits', () => {
+  using dispatcher = createBrowserDispatcher({
+    keymap: [{ keys: 'F8', command: 'go', context: 'mode == forwarded' }],
+  })
+  const scopeCommand = vi.fn()
+  const forwardedCommand = vi.fn()
+  const atForward: Array<string | undefined> = []
+  const whileHidden: boolean[] = []
+
+  function Owner() {
+    const [mode, setMode] = useState<'visible' | 'hidden'>('visible')
+    const element = useRef<HTMLDivElement | null>(null)
+    const { ref } = useFocusNode({ context: 'mode=forwarded', commands: { go: forwardedCommand } })
+    const bind: React.RefCallback<HTMLDivElement> = useCallback(
+      (node) => {
+        if (node) {
+          element.current = node
+          atForward.push(dispatcher.nodeForElement(node)?.context().values.get('mode'))
+        }
+        return ref(node)
+      },
+      [ref],
+    )
+
+    function hideAndReveal() {
+      const wrapper = element.current!
+      const before = dispatcher.nodeForElement(wrapper)!
+      flushSync(() => setMode('hidden'))
+      whileHidden.push(dispatcher.nodeForElement(wrapper) === null && !dispatcher.hasNode(before))
+      flushSync(() => setMode('visible'))
+    }
+
+    return (
+      <>
+        <button onClick={hideAndReveal}>Hide and reveal</button>
+        <Activity mode={mode}>
+          <FocusScope ref={bind} context='mode=scope' commands={{ go: scopeCommand }}>
+            <button>Target</button>
+          </FocusScope>
+        </Activity>
+      </>
+    )
+  }
+
+  const view = render(
+    <HotkeysProvider dispatcher={dispatcher}>
+      <Owner />
+    </HotkeysProvider>,
+  )
+  fireEvent.click(view.getByRole('button', { name: 'Hide and reveal' }))
+  expect(whileHidden).toEqual([true])
+  expect(atForward).toEqual(['scope', 'scope'])
+  const target = view.getByRole('button', { name: 'Target' })
+  expect(dispatcher.nodeForElement(target)?.context().values.get('mode')).toBe('forwarded')
+  press(target, 'F8', { code: 'F8' })
+  expect(scopeCommand).toHaveBeenCalledOnce()
+  expect(forwardedCommand).not.toHaveBeenCalled()
+})
+
+it('orders same-depth registrations by first committed mount even when refs attach in reverse', () => {
+  using dispatcher = createBrowserDispatcher({
+    keymap: [{ keys: 'F8', command: 'go', context: 'mode == second' }],
+  })
+  const firstCommand = vi.fn()
+  const secondCommand = vi.fn()
+
+  function Owner() {
+    const first = useFocusNode({ context: 'mode=first', commands: { go: firstCommand } }).ref
+    const second = useFocusNode({ context: 'mode=second', commands: { go: secondCommand } }).ref
+    const bind: React.RefCallback<HTMLButtonElement> = useCallback(
+      (element) => {
+        const detachSecond = second(element)
+        const detachFirst = first(element)
+        return () => {
+          if (typeof detachSecond === 'function') detachSecond()
+          if (typeof detachFirst === 'function') detachFirst()
+        }
+      },
+      [first, second],
+    )
+    return <button ref={bind}>Target</button>
+  }
+
+  const view = render(
+    <HotkeysProvider dispatcher={dispatcher}>
+      <Owner />
+    </HotkeysProvider>,
+  )
+  const target = view.getByRole('button')
+  expect(dispatcher.nodeForElement(target)?.context().values.get('mode')).toBe('second')
+  press(target, 'F8', { code: 'F8' })
+  expect(firstCommand).toHaveBeenCalledOnce()
+  expect(secondCommand).not.toHaveBeenCalled()
 })

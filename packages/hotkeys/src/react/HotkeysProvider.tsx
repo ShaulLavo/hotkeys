@@ -12,7 +12,8 @@ import {
 } from 'react'
 import { createBrowserDispatcher } from '@shaulavo/hotkeys'
 import { RegistryContext } from './_registry-context.js'
-import { attachFocusNode } from './_focus-groups.js'
+import { attachFocusNode, nextFocusMountSequence } from './_focus-groups.js'
+import type { FocusOrder } from '../dispatch/_focus-node-control.js'
 import { observeTargetRef } from './_focus-targets.js'
 import type { FocusAttachment, FocusCommands, FocusContextReader } from './_focus-groups.js'
 import type { HotkeysProviderOptions } from './_registry-context.js'
@@ -130,6 +131,7 @@ type CommitStore<Value> = {
 }
 
 type ParentScope<Commands extends CommandMap> = {
+  readonly depth: number
   readonly resolve: () => BoundNode<Commands> | null
   readonly subscribe: CommitStore<BoundNode<Commands>>['subscribe']
 }
@@ -177,10 +179,11 @@ export function createHotkeysContext<
     )
   }
 
-  function useScopedNode(options: UseFocusNodeOptions<Commands>) {
+  function useScopedNode(options: UseFocusNodeOptions<Commands>, depthOffset = 0) {
     const { dispatcher, configured } = useContext(DispatcherContext)
     const scope = useContext(ParentContext)
-    const attachment = useNodeAttachment(dispatcher, scope, options)
+    const depth = (scope?.depth ?? 0) + depthOffset
+    const attachment = useNodeAttachment(dispatcher, scope, depth, options)
     if (!configured)
       throw new Error('useFocusNode requires a HotkeysProvider with a dispatcher or keymap')
     return attachment
@@ -192,7 +195,7 @@ export function createHotkeysContext<
 
   function FocusScope({ children, ref, id, className, ...options }: FocusScopeProps<Commands>) {
     const ancestor = useContext(ParentContext)
-    const { result: focus, scope, rollbackRef } = useScopedNode(options)
+    const { result: focus, scope, rollbackRef } = useScopedNode(options, 1)
     const { ref: bindFocus } = focus
     const bind = useCallback(
       (element: HTMLDivElement | null) => {
@@ -282,9 +285,11 @@ type BoundNode<Commands extends CommandMap> = {
   readonly element: Element
   readonly attachment: FocusAttachment<Commands>
   readonly explicit: boolean
+  readonly depth: number
 }
 
 type FocusOptions<Commands extends CommandMap> = {
+  readonly order: FocusOrder
   readonly context: FocusContextReader | undefined
   readonly commands: FocusCommands<Commands> | undefined
 }
@@ -292,13 +297,15 @@ type FocusOptions<Commands extends CommandMap> = {
 function useNodeAttachment<Commands extends CommandMap>(
   dispatcher: BrowserDispatcher<Commands> | null,
   scope: ParentScope<Commands> | null,
+  depth: number,
   { context, commands, parent, target, enabled = true }: UseFocusNodeOptions<Commands>,
 ): {
   readonly result: UseFocusNodeResult<Commands>
   readonly scope: ParentScope<Commands>
   readonly rollbackRef: (element: Element | null) => void
 } {
-  const [snapshot, binding] = useCommitSnapshot<BoundNode<Commands>>()
+  const binding = useCommitStore<BoundNode<Commands>>()
+  const mountSequence = useRef<number | undefined>(undefined)
   const attachedRef = useRef<{ readonly element: Element } | null>(null)
   const reconnect = useRef<(() => void) | null>(null)
   const layoutActive = useRef(true)
@@ -320,7 +327,10 @@ function useNodeAttachment<Commands extends CommandMap>(
     refresh()
     return binding.read()
   }, [binding])
-  const childScope = useMemo(() => ({ resolve, subscribe: binding.subscribe }), [binding, resolve])
+  const childScope = useMemo(
+    () => ({ depth, resolve, subscribe: binding.subscribe }),
+    [binding, depth, resolve],
+  )
 
   const connect = useCallback(
     (element: Element | null, latest: FocusOptions<Commands>) => {
@@ -334,13 +344,21 @@ function useNodeAttachment<Commands extends CommandMap>(
         current?.element === element &&
         current.parent === nodeParent &&
         current.dispatcher === dispatcher &&
-        current.explicit === explicit
+        current.explicit === explicit &&
+        current.depth === latest.order.depth
       )
         return
-      const attachment = attachFocusNode(dispatcher, element, nodeParent, resolve)
+      const attachment = attachFocusNode(dispatcher, element, nodeParent, latest.order, resolve)
       attachment.sync(latest.context, latest.commands)
       current?.attachment.detach()
-      const next = { dispatcher, parent: nodeParent, element, attachment, explicit }
+      const next = {
+        dispatcher,
+        parent: nodeParent,
+        element,
+        attachment,
+        explicit,
+        depth: latest.order.depth,
+      }
       const refreshPeers =
         current?.element === element ? current.attachment.refreshPeers : undefined
       binding.write(next, refreshPeers)
@@ -350,7 +368,8 @@ function useNodeAttachment<Commands extends CommandMap>(
 
   useInsertionEffect(() => {
     // Publish the whole committed attachment before descendant callback refs run.
-    const options = { context, commands }
+    mountSequence.current ??= nextFocusMountSequence()
+    const options = { context, commands, order: { depth, sequence: mountSequence.current } }
     reconnect.current = () => {
       const element =
         target === undefined ? (attachedRef.current?.element ?? null) : readTarget(target)
@@ -361,7 +380,7 @@ function useNodeAttachment<Commands extends CommandMap>(
     return () => {
       reconnect.current = null
     }
-  }, [binding, commands, connect, context, dispatcher, enabled, target])
+  }, [binding, commands, connect, context, depth, dispatcher, enabled, target])
 
   const clearRef = useCallback(
     (entry: { readonly element: Element }) => {
@@ -370,14 +389,6 @@ function useNodeAttachment<Commands extends CommandMap>(
       if (binding.read()?.explicit === false) release()
     },
     [binding, release],
-  )
-
-  const detachRef = useCallback(
-    (entry: { readonly element: Element }) => {
-      // A composed ref may detach and reattach the same element in one commit.
-      queueMicrotask(() => clearRef(entry))
-    },
-    [clearRef],
   )
 
   const rollbackRef = useCallback(
@@ -392,7 +403,7 @@ function useNodeAttachment<Commands extends CommandMap>(
     (element: Element | null) => {
       if (explicit) return
       if (!element) {
-        if (attachedRef.current) detachRef(attachedRef.current)
+        if (attachedRef.current) clearRef(attachedRef.current)
         return
       }
       // Activity can reattach this host ref before reconnecting layout effects.
@@ -400,9 +411,9 @@ function useNodeAttachment<Commands extends CommandMap>(
       const entry = { element }
       attachedRef.current = entry
       resolve()
-      return () => detachRef(entry)
+      return () => clearRef(entry)
     },
-    [detachRef, explicit, resolve],
+    [clearRef, explicit, resolve],
   )
 
   const observation = useRef<ReturnType<typeof observeTargetRef> | null>(null)
@@ -435,8 +446,20 @@ function useNodeAttachment<Commands extends CommandMap>(
     }
   }, [binding, canAttach, dispatcher, resolve, targetRef])
 
-  const node = canAttach && snapshot?.dispatcher === dispatcher ? snapshot.attachment.node : null
-  return { result: { ref, node, dispatcher }, scope: childScope, rollbackRef }
+  const readNode = useCallback(() => {
+    const current = binding.read()
+    return current?.dispatcher === dispatcher ? current.attachment.node : null
+  }, [binding, dispatcher])
+  const subscribeNode = useCallback(
+    (listener: () => void) => subscribeAfterRefs(binding, listener),
+    [binding],
+  )
+  const node = useSyncExternalStore(subscribeNode, readNode, noPending)
+  return {
+    result: { ref, node: canAttach ? node : null, dispatcher },
+    scope: childScope,
+    rollbackRef,
+  }
 }
 
 function inheritedParent<Commands extends CommandMap>(
@@ -454,6 +477,11 @@ function readTarget(target: Exclude<UseFocusNodeOptions['target'], undefined>): 
 }
 
 function useCommitSnapshot<Value>() {
+  const store = useCommitStore<Value>()
+  return [useSyncExternalStore(store.subscribe, store.read, noPending), store] as const
+}
+
+function useCommitStore<Value>() {
   const [store] = useState<CommitStore<Value>>(() => {
     let current: Value | null = null
     const listeners = new Set<() => void>()
@@ -474,7 +502,25 @@ function useCommitSnapshot<Value>() {
       },
     }
   })
-  return [useSyncExternalStore(store.subscribe, store.read, noPending), store] as const
+  return store
+}
+
+function subscribeAfterRefs<Value>(store: CommitStore<Value>, listener: () => void): () => void {
+  let active = true
+  let pending = false
+  const unsubscribe = store.subscribe(() => {
+    if (pending) return
+    pending = true
+    // Synchronous DOM and scope cleanup is complete before React observes the final node.
+    queueMicrotask(() => {
+      pending = false
+      if (active) listener()
+    })
+  })
+  return () => {
+    active = false
+    unsubscribe()
+  }
 }
 
 function attachRef<T>(ref: Ref<T> | undefined, element: T | null): () => void {

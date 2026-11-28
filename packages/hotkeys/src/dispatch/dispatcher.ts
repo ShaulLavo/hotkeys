@@ -1,3 +1,5 @@
+import { compareFocusOrder, focusNodeControl } from './_focus-node-control.js'
+import type { FocusOrder } from './_focus-node-control.js'
 import { explainKeymap } from './explain.js'
 import type { ExplainOptions, KeymapExplanation } from './explain.js'
 import type { HotkeyInput } from '../hotkey.types.js'
@@ -64,6 +66,15 @@ export type FocusNode<Source, Commands extends CommandMap = AnyCommands> = Hoste
     command: Name,
     handler: CommandHandler<Source, Commands, Name>,
   ) => () => void
+  readonly [focusNodeControl]?: {
+    readonly handle: <Name extends CommandName<Commands>>(
+      command: Name,
+      handler: CommandHandler<Source, Commands, Name>,
+      order: FocusOrder,
+    ) => () => void
+    readonly suspend: () => void
+    readonly resume: () => boolean
+  }
   readonly focus: () => void
   /** Detaches the node; focus inside it moves to its parent. */
   readonly remove: () => void
@@ -122,7 +133,10 @@ export type Dispatcher<Source, Commands extends CommandMap = AnyCommands> = {
   readonly [Symbol.dispose]: () => void
 }
 
-type HandlerRegistration<Source> = { readonly handler: CommandHandler<Source> }
+type HandlerRegistration<Source> = {
+  readonly handler: CommandHandler<Source>
+  readonly order?: FocusOrder
+}
 type NodeState<Source, Commands extends CommandMap> = {
   node: FocusNode<Source, Commands>
   context: KeyContext
@@ -288,6 +302,12 @@ export function createDispatcher<Source = unknown, Commands extends CommandMap =
       },
       handle: (command, handler) =>
         addHandler(state, command, handler as unknown as CommandHandler<Source>),
+      [focusNodeControl]: {
+        handle: (command, handler, order) =>
+          addHandler(state, command, handler as unknown as CommandHandler<Source>, order),
+        suspend: () => suspendNode(state),
+        resume: () => resumeNode(state),
+      },
       focus: () => focus(node),
       remove: () => removeNode(state),
     }
@@ -307,11 +327,13 @@ export function createDispatcher<Source = unknown, Commands extends CommandMap =
     state: NodeState<Source, Commands>,
     command: string,
     handler: CommandHandler<Source>,
+    order?: FocusOrder,
   ) {
     let handlers = state.handlers.get(command)
     if (!handlers) state.handlers.set(command, (handlers = new Set()))
-    const registration = { handler }
+    const registration = { handler, order }
     handlers.add(registration)
+    if (order && handlers.size > 1) sortComposedHandlers(handlers)
     return () => {
       handlers.delete(registration)
     }
@@ -319,8 +341,17 @@ export function createDispatcher<Source = unknown, Commands extends CommandMap =
   function removeNode(state: NodeState<Source, Commands>) {
     if (state.removed) return
     state.removed = true
+    suspendNode(state)
+  }
+  function suspendNode(state: NodeState<Source, Commands>) {
     if (isInside(focusedNode, state.node)) focus(nearestLive(state.node.parent))
     states.delete(state.node)
+  }
+  function resumeNode(state: NodeState<Source, Commands>): boolean {
+    if (disposed || state.removed) return false
+    if (state.node.parent && !hasNode(state.node.parent)) return false
+    states.set(state.node, state)
+    return true
   }
   function nearestLive(node: HostedFocusNode | null): FocusNode<Source, Commands> | null {
     while (node && states.get(node)?.removed !== false) node = node.parent
@@ -371,6 +402,20 @@ export function createDispatcher<Source = unknown, Commands extends CommandMap =
     cancel,
     dispose,
     [Symbol.dispose]: dispose,
+  }
+}
+
+function sortComposedHandlers<Source>(handlers: Set<HandlerRegistration<Source>>): void {
+  const registrations = Array.from(handlers)
+  const ordered = registrations.filter(({ order }) => order !== undefined)
+  if (ordered.length < 2) return
+  ordered.sort((left, right) => compareFocusOrder(left.order!, right.order!))
+
+  // Keep ordinary node.handle registrations in their existing slots.
+  handlers.clear()
+  let index = 0
+  for (const registration of registrations) {
+    handlers.add(registration.order ? ordered[index++]! : registration)
   }
 }
 
