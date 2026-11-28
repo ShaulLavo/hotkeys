@@ -7,30 +7,25 @@ type ObservedRoot = {
 
 const roots = new WeakMap<Node, ObservedRoot>()
 
-export function observeTargetRef(ref: RefObject<Element | null>, onChange: () => void) {
-  let element = ref.current
-  let root = connectedRoot(element)
-  const updateRoot = () => resolve(true)
-  let release = subscribe(root, updateRoot)
-  return { refresh: () => resolve(false), dispose: () => release() }
+export function observeTargetRef(
+  ref: RefObject<Element | null>,
+  reconcile: (element: Element | null) => void,
+) {
+  let root = ref.current?.getRootNode() ?? document
+  let release = subscribe(root, refresh)
+  return { refresh, dispose: () => release() }
 
-  function resolve(checkRoot: boolean) {
-    const next = ref.current
-    if (next === element && !checkRoot) return
-    const nextRoot = connectedRoot(next, root)
+  function refresh() {
+    const element = ref.current
+    // Keep observing a detached subtree so its later insertion preserves removal tracking.
+    const nextRoot = element?.getRootNode() ?? root
     if (nextRoot !== root) {
       release()
       root = nextRoot
-      release = subscribe(root, updateRoot)
+      release = subscribe(root, refresh)
     }
-    if (next === element) return
-    element = next
-    onChange()
+    reconcile(element)
   }
-}
-
-function connectedRoot(element: Element | null, fallback: Node = document): Node {
-  return element?.isConnected ? element.getRootNode() : fallback
 }
 
 function subscribe(root: Node, resolve: () => void): () => void {

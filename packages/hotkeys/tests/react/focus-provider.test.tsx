@@ -518,3 +518,101 @@ it('updates nested attachments before the first key after their parent ref moves
   expect(command).toHaveBeenCalledTimes(2)
   expect(dispatcher.nodeForElement(nested)?.parent).not.toBe(previous?.parent)
 })
+
+it('compares object refs with the current attachment after owner and child commits', () => {
+  using dispatcher = createBrowserDispatcher({ keymap: [{ keys: 'F8', command: 'go' }] })
+  const matched: EventTarget[] = []
+
+  function Targets({
+    moved,
+    target,
+  }: {
+    moved: boolean
+    target: React.RefObject<HTMLButtonElement | null>
+  }) {
+    const [back, setBack] = useState(false)
+    const second = moved && !back
+    return (
+      <>
+        <button ref={second ? null : target}>First</button>
+        <button ref={second ? target : null}>Second</button>
+        <button onClick={() => setBack(true)}>Move back</button>
+      </>
+    )
+  }
+  function Owner({ moved }: { moved: boolean }) {
+    const target = useRef<HTMLButtonElement>(null)
+    useFocusNode({
+      target,
+      commands: {
+        go: ({ source }) => {
+          if (source?.target) matched.push(source.target)
+        },
+      },
+    })
+    return <Targets moved={moved} target={target} />
+  }
+  const app = (moved: boolean) => (
+    <HotkeysProvider dispatcher={dispatcher}>
+      <Owner moved={moved} />
+    </HotkeysProvider>
+  )
+  const view = render(app(false))
+  const first = view.getByRole('button', { name: 'First' })
+  const second = view.getByRole('button', { name: 'Second' })
+  view.rerender(app(true))
+  expect(dispatcher.nodeForElement(second)).not.toBeNull()
+  fireEvent.click(view.getByRole('button', { name: 'Move back' }))
+  press(first, 'F8', { code: 'F8' })
+  press(second, 'F8', { code: 'F8' })
+  expect(matched).toEqual([first])
+})
+
+it('tracks target removal after its detached container moves into a shadow root', async () => {
+  using dispatcher = createBrowserDispatcher({ keymap: [{ keys: 'F8', command: 'go' }] })
+  const portal = document.body.appendChild(document.createElement('div'))
+  const host = document.body.appendChild(document.createElement('div'))
+  const shadow = host.attachShadow({ mode: 'open' })
+
+  function Targets({ target }: { target: React.RefObject<HTMLButtonElement | null> }) {
+    const [shown, setShown] = useState(true)
+    return (
+      <>
+        <button onClick={() => setShown(false)}>Remove target</button>
+        {createPortal(shown ? <button ref={target}>Portal target</button> : null, portal)}
+      </>
+    )
+  }
+  function Owner() {
+    const target = useRef<HTMLButtonElement>(null)
+    useFocusNode({ target, commands: { go: () => {} } })
+    return <Targets target={target} />
+  }
+
+  const view = render(
+    <HotkeysProvider dispatcher={dispatcher}>
+      <Owner />
+    </HotkeysProvider>,
+  )
+  try {
+    const button = portal.querySelector('button')!
+    expect(dispatcher.nodeForElement(button)).not.toBeNull()
+    await act(async () => {
+      await new Promise<void>((resolve) => {
+        const observer = new MutationObserver(() => {
+          observer.disconnect()
+          resolve()
+        })
+        observer.observe(document.body, { childList: true })
+        portal.remove()
+      })
+    })
+    shadow.append(portal)
+    fireEvent.click(view.getByRole('button', { name: 'Remove target' }))
+    await waitFor(() => expect(dispatcher.nodeForElement(button)).toBeNull())
+  } finally {
+    view.unmount()
+    portal.remove()
+    host.remove()
+  }
+})

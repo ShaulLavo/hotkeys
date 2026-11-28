@@ -330,8 +330,10 @@ function useNodeAttachment<Commands extends CommandMap>(
       target === undefined ? (attachedRef.current?.element ?? null) : readTarget(target)
     connect(element, { context, commands })
   })
+  const observation = useRef<ReturnType<typeof observeTargetRef> | null>(null)
   useLayoutEffect(() => {
     commitAttachment()
+    observation.current?.refresh()
   })
   useLayoutEffect(() => {
     // A target move can change the parent's node during key processing, before React renders.
@@ -339,13 +341,17 @@ function useNodeAttachment<Commands extends CommandMap>(
   }, [inherited])
   useLayoutEffect(() => {
     if (!canAttach || !targetRef || !dispatcher) return
-    const targetObserver = observeTargetRef(targetRef, () => commitAttachment())
+    const targetObserver = observeTargetRef(targetRef, (element) => {
+      if (element !== (binding.read()?.element ?? null)) commitAttachment()
+    })
+    observation.current = targetObserver
     const stopListening = dispatcher.observeKeys({ beforeKey: targetObserver.refresh })
     return () => {
       stopListening()
       targetObserver.dispose()
+      observation.current = null
     }
-  }, [canAttach, dispatcher, targetRef])
+  }, [binding, canAttach, dispatcher, targetRef])
   useLayoutEffect(() => () => release(), [release])
 
   const node = canAttach && snapshot?.dispatcher === dispatcher ? snapshot.attachment.node : null
