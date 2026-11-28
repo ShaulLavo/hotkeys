@@ -206,6 +206,6 @@ function composedParentElement(element: Element): Element | null {
   if (element.assignedSlot) return element.assignedSlot
   if (element.parentElement) return element.parentElement
   const root = element.getRootNode()
-  const DOM = element.ownerDocument.defaultView ?? globalThis
-  return root instanceof DOM.ShadowRoot ? root.host : null
+  // Adoption can move a shadow root into a document from another realm.
+  return root.nodeType === 11 && 'host' in root ? (root as ShadowRoot).host : null
 }

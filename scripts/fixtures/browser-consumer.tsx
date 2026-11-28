@@ -31,6 +31,27 @@ const frames = ['first', 'second'].map((id) => {
   button.textContent = id
   return { frame, registry: createHotkeyRegistry({ document: doc }) }
 })
+verifyAdoptedShadowFocus(frames[0]!.frame.contentDocument!)
+
+function verifyAdoptedShadowFocus(destination: Document) {
+  const host = document.createElement('div')
+  const shadow = host.attachShadow({ mode: 'open' })
+  const input = shadow.appendChild(document.createElement('input'))
+  destination.body.appendChild(host)
+  const dispatcher = createBrowserDispatcher({ root: destination })
+  try {
+    input.focus()
+    const node = dispatcher.createNode({ commands: { go: () => true } })
+    dispatcher.attachElement(node, host)
+    if (dispatcher.nodeForElement(input) !== node || !dispatcher.dispatchCommand('go')) {
+      throw new Error('An adopted shadow root must route commands before any key event')
+    }
+  } finally {
+    dispatcher.dispose()
+    host.remove()
+  }
+}
+
 const external = createBrowserDispatcher<Commands>({ keymap, platform: 'linux', capture: true })
 const sentinel = external.createNode({ commands: { workspace: () => {} } })
 const output = document.querySelector('pre')!
