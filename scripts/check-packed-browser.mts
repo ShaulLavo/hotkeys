@@ -77,7 +77,7 @@ try {
 
 async function runScenario(page: Page) {
   const workspace = page.getByRole('button', { name: 'Workspace' })
-  const editor = page.getByRole('textbox', { name: 'Editor' })
+  const editor = page.getByRole('textbox', { name: 'Editor', exact: true })
   const pending = page.locator('output[aria-label="Pending"]')
   const shifts = page.locator('output[aria-label="Shift"]')
   const log = page.getByLabel('Log')
