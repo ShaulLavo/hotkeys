@@ -46,6 +46,11 @@ function verifyAdoptedShadowFocus(destination: Document) {
     if (dispatcher.nodeForElement(input) !== node || !dispatcher.dispatchCommand('go')) {
       throw new Error('An adopted shadow root must route commands before any key event')
     }
+    const fragment = Object.assign(destination.createDocumentFragment(), { host })
+    const unrelated = fragment.appendChild(destination.createElement('input'))
+    if (dispatcher.nodeForElement(unrelated) !== null) {
+      throw new Error('A detached fragment must not inherit focus from a host property')
+    }
   } finally {
     dispatcher.dispose()
     host.remove()
