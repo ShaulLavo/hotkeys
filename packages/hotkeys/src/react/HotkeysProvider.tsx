@@ -196,6 +196,7 @@ export function createHotkeysContext<
     const { ref: bindFocus } = focus
     const bind = useCallback(
       (element: HTMLDivElement | null) => {
+        // Bind the scope first so the forwarded ref can read it or join its group.
         const detach = bindFocus(element)
         try {
           const detachRef = attachRef(ref, element)
@@ -306,9 +307,11 @@ function useNodeAttachment<Commands extends CommandMap>(
   const inherited = parent === undefined ? scope : null
 
   useInsertionEffect(() => {
-    // A replacement ref can run before this owner's layout effects.
+    // Descendant refs can read or dispatch through this attachment before layout effects.
     committedOptions.current = { context, commands }
-  }, [context, commands])
+    const current = binding.read()
+    if (enabled && current?.dispatcher === dispatcher) current.attachment.sync(context, commands)
+  }, [binding, context, commands, dispatcher, enabled])
 
   const release = useCallback(() => {
     const current = binding.read()

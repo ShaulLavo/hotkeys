@@ -55,6 +55,7 @@ export function attachFocusNode<Commands extends CommandMap>(
   let committedCommands: FocusCommands<Commands> | undefined
   const read = () =>
     typeof committedContext === 'function' ? committedContext() : committedContext
+  // Attachment order also defines context merge order and initial handler order.
   contexts.add(read)
 
   function sync(

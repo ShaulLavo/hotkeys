@@ -894,3 +894,100 @@ it('attaches a default scope before invoking a forwarded ref in a detached porta
     view.unmount()
   }
 })
+
+it('updates a mounted ancestor before a keyed child ref can dispatch through it', () => {
+  using dispatcher = createBrowserDispatcher()
+  const portal = document.createElement('div')
+  const calls: string[] = []
+  const contexts: string[][] = []
+
+  function Child({ version }: { version: string }) {
+    const { ref } = useFocusNode({})
+    const bind: React.RefCallback<HTMLButtonElement> = useCallback(
+      (element) => {
+        const detach = ref(element)
+        if (!element) return detach
+        const node = dispatcher.nodeForElement(element)
+        if (node) {
+          contexts.push(Array.from(node.parent?.context().identifiers ?? []))
+          dispatcher.dispatchCommandFrom(node, 'go')
+        }
+        return detach
+      },
+      [ref],
+    )
+    return (
+      <button key={version} ref={bind}>
+        {version}
+      </button>
+    )
+  }
+
+  function Owner({ version }: { version: string }) {
+    return createPortal(
+      <FocusScope context={version} commands={{ go: () => void calls.push(version) }}>
+        <Child version={version} />
+      </FocusScope>,
+      portal,
+    )
+  }
+
+  const app = (version: string) => (
+    <HotkeysProvider dispatcher={dispatcher}>
+      <Owner version={version} />
+    </HotkeysProvider>
+  )
+  const view = render(app('First'))
+  try {
+    contexts.length = 0
+    calls.length = 0
+    view.rerender(app('Second'))
+    expect(contexts).toEqual([['Second']])
+    expect(calls).toEqual(['Second'])
+  } finally {
+    view.unmount()
+  }
+})
+
+it('offers scope handlers first and lets later context values win in a composed group', () => {
+  using dispatcher = createBrowserDispatcher({
+    keymap: [{ keys: 'F8', command: 'go', context: 'mode == forwarded' }],
+  })
+  const scopeCommand = vi.fn()
+  const forwardedCommand = vi.fn()
+  const scopeAtForward: Array<string | undefined> = []
+
+  function Owner({ version }: { version: number }) {
+    const { ref } = useFocusNode({
+      context: 'mode=forwarded',
+      commands: { go: forwardedCommand },
+    })
+    const bind: React.RefCallback<HTMLDivElement> = useCallback(
+      (element) => {
+        if (element)
+          scopeAtForward.push(dispatcher.nodeForElement(element)?.context().values.get('mode'))
+        return ref(element)
+      },
+      [ref],
+    )
+    return (
+      <FocusScope key={version} ref={bind} context='mode=scope' commands={{ go: scopeCommand }}>
+        <button>Target</button>
+      </FocusScope>
+    )
+  }
+
+  const app = (version: number) => (
+    <HotkeysProvider dispatcher={dispatcher}>
+      <Owner version={version} />
+    </HotkeysProvider>
+  )
+  const view = render(app(0))
+  view.rerender(app(1))
+  const target = view.getByRole('button')
+  expect(scopeAtForward).toEqual(['scope', 'scope'])
+  expect(dispatcher.nodeForElement(target)?.context().values.get('mode')).toBe('forwarded')
+  press(target, 'F8', { code: 'F8' })
+  expect(scopeCommand).toHaveBeenCalledOnce()
+  expect(forwardedCommand).not.toHaveBeenCalled()
+})
