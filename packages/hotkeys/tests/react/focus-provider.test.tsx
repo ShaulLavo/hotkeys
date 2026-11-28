@@ -668,3 +668,62 @@ it('keeps watching the document while a ref points into a detached portal', asyn
     portal.remove()
   }
 })
+
+it('registers a replacement in a detached portal before any key event', async () => {
+  using dispatcher = createBrowserDispatcher({ keymap: [{ keys: 'F8', command: 'go' }] })
+  const portal = document.body.appendChild(document.createElement('div'))
+  const host = document.body.appendChild(document.createElement('div'))
+  const shadow = host.attachShadow({ mode: 'open' })
+  const command = vi.fn()
+
+  function Targets({ target }: { target: React.RefObject<HTMLButtonElement | null> }) {
+    const [shown, setShown] = useState(true)
+    return (
+      <>
+        <button onClick={() => setShown(!shown)}>Toggle target</button>
+        {createPortal(shown ? <button ref={target}>Target</button> : null, portal)}
+      </>
+    )
+  }
+  function Owner() {
+    const target = useRef<HTMLButtonElement>(null)
+    useFocusNode({ target, commands: { go: command } })
+    return <Targets target={target} />
+  }
+
+  const view = render(
+    <HotkeysProvider dispatcher={dispatcher}>
+      <Owner />
+    </HotkeysProvider>,
+  )
+  try {
+    const before = portal.querySelector('button')!
+    expect(dispatcher.nodeForElement(before)).not.toBeNull()
+    await act(async () => {
+      await new Promise<void>((resolve) => {
+        const observer = new MutationObserver(() => {
+          observer.disconnect()
+          resolve()
+        })
+        observer.observe(document.body, { childList: true })
+        portal.remove()
+      })
+    })
+    const toggle = view.getByRole('button', { name: 'Toggle target' })
+    fireEvent.click(toggle)
+    await waitFor(() => expect(dispatcher.nodeForElement(before)).toBeNull())
+    fireEvent.click(toggle)
+    const after = portal.querySelector('button')!
+    expect(after).not.toBe(before)
+    await waitFor(() => expect(dispatcher.nodeForElement(after)).not.toBeNull())
+    shadow.append(portal)
+    press(after, 'F8', { code: 'F8', composed: true })
+    expect(command).toHaveBeenCalledOnce()
+    view.unmount()
+    expect(dispatcher.nodeForElement(after)).toBeNull()
+  } finally {
+    view.unmount()
+    portal.remove()
+    host.remove()
+  }
+})

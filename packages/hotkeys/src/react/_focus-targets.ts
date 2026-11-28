@@ -5,50 +5,53 @@ type ObservedRoot = {
   readonly native: MutationObserver
 }
 
+type Subscription = {
+  readonly root: WeakRef<Node>
+  readonly release: () => void
+}
+
 const roots = new WeakMap<Node, ObservedRoot>()
 
 export function observeTargetRef(
   ref: RefObject<Element | null>,
   reconcile: (element: Element | null) => void,
 ) {
-  let owner: Document | undefined
-  let localRoot: Node | null = null
-  let releaseDocument: (() => void) | undefined
-  let releaseLocalRoot: (() => void) | undefined
+  let documentSubscription = subscribe(ref.current?.ownerDocument ?? document, refresh)
+  let subtreeSubscription: Subscription | undefined
   refresh()
   return { refresh, dispose }
 
   function refresh() {
     const element = ref.current
-    const nextOwner = element?.ownerDocument ?? owner ?? document
-    if (nextOwner !== owner) {
-      releaseDocument?.()
-      owner = nextOwner
-      releaseDocument = subscribe(owner, refresh)
-    }
-
-    // A target may move back into the document while its old subtree remains detached.
-    const nextRoot = element ? element.getRootNode() : connectedShadowRoot(localRoot)
-    const extraRoot = nextRoot === owner ? null : nextRoot
-    if (extraRoot !== localRoot) {
-      releaseLocalRoot?.()
-      localRoot = extraRoot
-      releaseLocalRoot = localRoot ? subscribe(localRoot, refresh) : undefined
-    }
+    // Null ends the attachment. The last location can still receive a replacement.
+    if (element) observeLocation(element)
     reconcile(element)
   }
 
+  function observeLocation(element: Element) {
+    const owner = element.ownerDocument
+    if (documentSubscription.root.deref() !== owner) {
+      documentSubscription.release()
+      documentSubscription = subscribe(owner, refresh)
+    }
+
+    const root = element.getRootNode()
+    const subtree = root === owner ? undefined : root
+    if (subtreeSubscription) {
+      const observedRoot = subtreeSubscription.root.deref()
+      if (observedRoot && observedRoot === subtree) return
+      subtreeSubscription.release()
+    }
+    subtreeSubscription = subtree ? subscribe(subtree, refresh) : undefined
+  }
+
   function dispose() {
-    releaseLocalRoot?.()
-    releaseDocument?.()
+    subtreeSubscription?.release()
+    documentSubscription.release()
   }
 }
 
-function connectedShadowRoot(root: Node | null): Node | null {
-  return root?.isConnected && 'host' in root ? root : null
-}
-
-function subscribe(root: Node, resolve: () => void): () => void {
+function subscribe(root: Node, resolve: () => void): Subscription {
   let observed = roots.get(root)
   if (!observed) {
     const observers = new Set<() => void>()
@@ -64,9 +67,14 @@ function subscribe(root: Node, resolve: () => void): () => void {
   }
   const { observers, native } = observed
   observers.add(resolve)
-  return () => {
+  // Let a detached subtree disappear if its last owner releases it while the ref is null.
+  const target = new WeakRef(root)
+  return { root: target, release }
+
+  function release() {
     if (!observers.delete(resolve) || observers.size) return
     native.disconnect()
-    roots.delete(root)
+    const element = target.deref()
+    if (element) roots.delete(element)
   }
 }
