@@ -1,4 +1,5 @@
 import { StrictMode, createRef, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { act, fireEvent, render, renderHook, waitFor } from '@testing-library/react'
 import { expect, expectTypeOf, it, vi } from 'vitest'
 import { createBrowserDispatcher, createHotkeyRegistry, parseShortcut } from '../../src/index.js'
@@ -396,4 +397,74 @@ it('reacquires a later row after an earlier replace invalidates its handle', () 
   expect(registry.registrations.state.size).toBe(2)
   press(document, 'F9', { code: 'F9' })
   expect(later).toHaveBeenCalledOnce()
+})
+
+it('routes a ref moved between existing elements before the next key', () => {
+  using dispatcher = createBrowserDispatcher({ keymap: [{ keys: 'F8', command: 'go' }] })
+  const command = vi.fn()
+  function Targets({ target }: { target: React.RefObject<HTMLButtonElement | null> }) {
+    const [second, setSecond] = useState(false)
+    return (
+      <>
+        <button ref={second ? null : target} onClick={() => setSecond(true)}>
+          First
+        </button>
+        <button ref={second ? target : null}>Second</button>
+      </>
+    )
+  }
+  function Owner() {
+    const target = useRef<HTMLButtonElement>(null)
+    useFocusNode({ target, commands: { go: command } })
+    return <Targets target={target} />
+  }
+  const view = render(
+    <HotkeysProvider dispatcher={dispatcher}>
+      <Owner />
+    </HotkeysProvider>,
+  )
+  const first = view.getByRole('button', { name: 'First' })
+  const second = view.getByRole('button', { name: 'Second' })
+  fireEvent.click(first)
+  press(first, 'F8', { code: 'F8' })
+  expect(command).not.toHaveBeenCalled()
+  press(second, 'F8', { code: 'F8' })
+  expect(command).toHaveBeenCalledOnce()
+  expect(dispatcher.nodeForElement(first)).toBeNull()
+})
+
+it('finds an initially empty ref attached inside a shadow root before dispatch', () => {
+  using dispatcher = createBrowserDispatcher({ keymap: [{ keys: 'F8', command: 'go' }] })
+  const command = vi.fn()
+  const host = document.body.appendChild(document.createElement('div'))
+  const shadow = host.attachShadow({ mode: 'open' })
+  function Targets({ target }: { target: React.RefObject<HTMLButtonElement | null> }) {
+    const [shown, setShown] = useState(false)
+    return (
+      <>
+        <button onClick={() => setShown(true)}>Show</button>
+        {shown && createPortal(<button ref={target}>Target</button>, shadow)}
+      </>
+    )
+  }
+  function Owner() {
+    const target = useRef<HTMLButtonElement>(null)
+    useFocusNode({ target, commands: { go: command } })
+    return <Targets target={target} />
+  }
+  try {
+    const view = render(
+      <HotkeysProvider dispatcher={dispatcher}>
+        <Owner />
+      </HotkeysProvider>,
+    )
+    fireEvent.click(view.getByRole('button', { name: 'Show' }))
+    const button = shadow.querySelector('button')!
+    press(button, 'F8', { code: 'F8', composed: true })
+    expect(command).toHaveBeenCalledOnce()
+    view.unmount()
+    expect(dispatcher.nodeForElement(button)).toBeNull()
+  } finally {
+    host.remove()
+  }
 })

@@ -332,9 +332,19 @@ function useNodeAttachment<Commands extends CommandMap>(
     commitAttachment()
   })
   useLayoutEffect(() => {
-    if (!canAttach || !targetRef) return
-    return observeTargetRef(targetRef, () => commitAttachment())
-  }, [canAttach, targetRef])
+    if (!canAttach || !targetRef || !dispatcher) return
+    const stopObserving = observeTargetRef(targetRef, () => commitAttachment())
+    // React can move an object ref between mounted elements without a DOM mutation.
+    const stopListening = dispatcher.observeKeys({
+      beforeKey: () => {
+        if (targetRef.current !== (bound.current?.element ?? null)) commitAttachment()
+      },
+    })
+    return () => {
+      stopListening()
+      stopObserving()
+    }
+  }, [canAttach, dispatcher, targetRef])
   useLayoutEffect(() => () => release(), [release])
 
   const current = canAttach && snapshot?.dispatcher === dispatcher && snapshot.parent === parent
