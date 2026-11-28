@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffectEvent,
+  useInsertionEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -191,13 +192,13 @@ export function createHotkeysContext<
 
   function FocusScope({ children, ref, id, className, ...options }: FocusScopeProps<Commands>) {
     const ancestor = useContext(ParentContext)
-    const { result: focus, scope } = useScopedNode(options)
+    const { result: focus, scope, rollbackRef } = useScopedNode(options)
     const { ref: bindFocus } = focus
     const bind = useCallback(
       (element: HTMLDivElement | null) => {
-        const detachRef = attachRef(ref, element)
+        const detach = bindFocus(element)
         try {
-          const detach = bindFocus(element)
+          const detachRef = attachRef(ref, element)
           return () => {
             try {
               if (typeof detach === 'function') detach()
@@ -206,11 +207,11 @@ export function createHotkeysContext<
             }
           }
         } catch (error) {
-          detachRef()
+          rollbackRef(element)
           throw error
         }
       },
-      [bindFocus, ref],
+      [bindFocus, ref, rollbackRef],
     )
     return (
       <div ref={bind} id={id} className={className}>
@@ -291,7 +292,11 @@ function useNodeAttachment<Commands extends CommandMap>(
   dispatcher: BrowserDispatcher<Commands> | null,
   scope: ParentScope<Commands> | null,
   { context, commands, parent, target, enabled = true }: UseFocusNodeOptions<Commands>,
-): { readonly result: UseFocusNodeResult<Commands>; readonly scope: ParentScope<Commands> } {
+): {
+  readonly result: UseFocusNodeResult<Commands>
+  readonly scope: ParentScope<Commands>
+  readonly rollbackRef: (element: Element | null) => void
+} {
   const [snapshot, binding] = useCommitSnapshot<BoundNode<Commands>>()
   const attachedRef = useRef<{ readonly element: Element } | null>(null)
   const committedOptions = useRef<FocusOptions<Commands> | undefined>(undefined)
@@ -299,6 +304,11 @@ function useNodeAttachment<Commands extends CommandMap>(
   const explicit = target !== undefined
   const targetRef = target && 'current' in target ? target : null
   const inherited = parent === undefined ? scope : null
+
+  useInsertionEffect(() => {
+    // A replacement ref can run before this owner's layout effects.
+    committedOptions.current = { context, commands }
+  }, [context, commands])
 
   const release = useCallback(() => {
     const current = binding.read()
@@ -332,16 +342,29 @@ function useNodeAttachment<Commands extends CommandMap>(
     [binding, canAttach, dispatcher, explicit, inherited, parent, release],
   )
 
+  const clearRef = useCallback(
+    (entry: { readonly element: Element }) => {
+      if (attachedRef.current !== entry) return
+      attachedRef.current = null
+      if (binding.read()?.explicit === false) release()
+    },
+    [binding, release],
+  )
+
   const detachRef = useCallback(
     (entry: { readonly element: Element }) => {
       // A composed ref may detach and reattach the same element in one commit.
-      queueMicrotask(() => {
-        if (attachedRef.current !== entry) return
-        attachedRef.current = null
-        if (binding.read()?.explicit === false) release()
-      })
+      queueMicrotask(() => clearRef(entry))
     },
-    [binding, release],
+    [clearRef],
+  )
+
+  const rollbackRef = useCallback(
+    (element: Element | null) => {
+      const entry = attachedRef.current
+      if (entry?.element === element) clearRef(entry)
+    },
+    [clearRef],
   )
 
   const ref = useCallback(
@@ -362,9 +385,7 @@ function useNodeAttachment<Commands extends CommandMap>(
   const commitAttachment = useEffectEvent(() => {
     const element =
       target === undefined ? (attachedRef.current?.element ?? null) : readTarget(target)
-    const options = { context, commands }
-    committedOptions.current = options
-    connect(element, options)
+    connect(element, committedOptions.current)
   })
   const observation = useRef<ReturnType<typeof observeTargetRef> | null>(null)
   useLayoutEffect(() => {
@@ -391,7 +412,7 @@ function useNodeAttachment<Commands extends CommandMap>(
   useLayoutEffect(() => () => release(), [release])
 
   const node = canAttach && snapshot?.dispatcher === dispatcher ? snapshot.attachment.node : null
-  return { result: { ref, node, dispatcher }, scope: binding }
+  return { result: { ref, node, dispatcher }, scope: binding, rollbackRef }
 }
 
 function inheritedParent<Commands extends CommandMap>(

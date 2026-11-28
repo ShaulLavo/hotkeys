@@ -1,4 +1,4 @@
-import { StrictMode, createRef, useLayoutEffect, useRef, useState } from 'react'
+import { StrictMode, createRef, useCallback, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { act, fireEvent, render, renderHook, waitFor } from '@testing-library/react'
 import { expect, expectTypeOf, it, vi } from 'vitest'
@@ -817,3 +817,80 @@ it.each(['callback', 'object'] as const)(
     }
   },
 )
+
+it('uses the current commit options during a keyed portal replacement ref', () => {
+  using dispatcher = createBrowserDispatcher()
+  const portal = document.createElement('div')
+  const calls: string[] = []
+  const contexts: string[][] = []
+
+  function Owner({ changed }: { changed: boolean }) {
+    const version = changed ? 'Second' : 'First'
+    const { ref } = useFocusNode({
+      context: version,
+      commands: { go: () => void calls.push(version) },
+    })
+    const bind: React.RefCallback<HTMLButtonElement> = useCallback(
+      (element) => {
+        const detach = ref(element)
+        if (!element) return detach
+        const node = dispatcher.nodeForElement(element)!
+        contexts.push(Array.from(node.context().identifiers))
+        dispatcher.dispatchCommandFrom(node, 'go')
+        return detach
+      },
+      [ref],
+    )
+    return createPortal(
+      <button key={version} ref={bind}>
+        {version}
+      </button>,
+      portal,
+    )
+  }
+
+  const app = (changed: boolean) => (
+    <HotkeysProvider dispatcher={dispatcher}>
+      <Owner changed={changed} />
+    </HotkeysProvider>
+  )
+  const view = render(app(false))
+  try {
+    view.rerender(app(true))
+    expect(contexts).toEqual([['First'], ['Second']])
+    expect(calls).toEqual(['First', 'Second'])
+  } finally {
+    view.unmount()
+  }
+})
+
+it('attaches a default scope before invoking a forwarded ref in a detached portal', () => {
+  using dispatcher = createBrowserDispatcher()
+  const portal = document.createElement('div')
+  const command = vi.fn()
+  const seen: boolean[] = []
+  const forwarded: React.RefCallback<HTMLDivElement> = (element) => {
+    if (!element) return
+    const node = dispatcher.nodeForElement(element)
+    seen.push(
+      node !== null &&
+        node.context().identifiers.has('Scope') &&
+        dispatcher.dispatchCommandFrom(node, 'go'),
+    )
+  }
+
+  const view = render(
+    <HotkeysProvider dispatcher={dispatcher}>
+      {createPortal(
+        <FocusScope ref={forwarded} context='Scope' commands={{ go: command }} />,
+        portal,
+      )}
+    </HotkeysProvider>,
+  )
+  try {
+    expect(seen).toEqual([true])
+    expect(command).toHaveBeenCalledOnce()
+  } finally {
+    view.unmount()
+  }
+})
