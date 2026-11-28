@@ -346,10 +346,15 @@ function useNodeAttachment<Commands extends CommandMap>(
     }
     const current = binding.read()
     if (enabled && current?.dispatcher === dispatcher) current.attachment.sync(context, commands)
+    return () => {
+      reconnect.current = null
+    }
   }, [binding, commands, connect, context, dispatcher, enabled, target])
 
   const resolve = useCallback(() => {
-    reconnect.current?.()
+    const refresh = reconnect.current
+    if (!refresh) return null
+    refresh()
     return binding.read()
   }, [binding])
   const childScope = useMemo(() => ({ resolve, subscribe: binding.subscribe }), [binding, resolve])

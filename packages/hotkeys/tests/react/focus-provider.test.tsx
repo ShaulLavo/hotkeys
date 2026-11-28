@@ -1086,3 +1086,30 @@ it('offers added or re-added composed handlers after existing handlers', () => {
   press(target, 'F8', { code: 'F8' })
   expect(calls).toEqual(['forwarded', 'scope'])
 })
+
+it('does not recreate nested nodes while unmounting an external scope', () => {
+  using dispatcher = createBrowserDispatcher()
+
+  function Child() {
+    const target = useRef<HTMLTextAreaElement>(null)
+    useFocusNode({ target, context: 'Child' })
+    return <textarea ref={target} />
+  }
+
+  const view = render(
+    <StrictMode>
+      <HotkeysProvider dispatcher={dispatcher}>
+        <FocusScope context='Parent'>
+          <Child />
+        </FocusScope>
+      </HotkeysProvider>
+    </StrictMode>,
+  )
+  const child = view.getByRole('textbox')
+  const parent = child.parentElement!
+  expect(dispatcher.nodeForElement(child)).not.toBeNull()
+  expect(dispatcher.nodeForElement(parent)).not.toBeNull()
+  view.unmount()
+  expect(dispatcher.nodeForElement(child)).toBeNull()
+  expect(dispatcher.nodeForElement(parent)).toBeNull()
+})
