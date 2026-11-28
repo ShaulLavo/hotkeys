@@ -1,83 +1,74 @@
 # Troubleshooting
 
-When a shortcut fails to fire or behaves unexpectedly, check these causes from top to bottom.
+## `useFocusNode requires a HotkeysProvider with a dispatcher or keymap`
 
-## Nothing fires
+**Cause:** You called `useFocusNode` or rendered `<FocusScope>` outside a matching `HotkeysProvider`, or inside a registry-only `HotkeysProvider` that has neither `dispatcher` nor `keymap`. If you created a typed context with `createHotkeysContext<AppCommands>()`, the provider and child hooks must come from that same context object.
 
-1. **The focus node is not attached.** `createBrowserDispatcher` focuses the deepest node attached to an element on the event path. Call `attachElement(node, element)` for every node that should receive DOM key events.
-2. **The key pressed outside `root`.** `createBrowserDispatcher` listens on `root`, which defaults to `document`. Keys fired outside an element `root` are ignored.
-3. **Another listener called `preventDefault()`.** A dispatcher skips a `keydown` whose `defaultPrevented` is already true. Pass `capture: true` to hear keys ahead of descendant handlers.
-4. **The handler returned `false`.** Returning `false` declines the command and passes the key along. Check for an accidental `return false`.
-5. **The platform resolved `Mod` differently.** `Mod` means Command on macOS and Control on Windows and Linux. Without `navigator` (tests or server rendering), `detectPlatform()` returns `'linux'`. Pass `platform: 'mac'` to override it.
+**Fix:** Wrap the tree in `<HotkeysProvider keymap={keymap}>` or `<HotkeysProvider dispatcher={dispatcher}>`, using the same context returned by `createHotkeysContext()` if typed.
 
-## A shortcut string or keymap throws on setup
+## Shortcut does not fire inside an input, textarea, or contenteditable element
 
-`parseShortcut`, `registerHotkey`, `compileKeymap`, and `dispatcher.setKeymap` reject malformed tokens instead of dropping them silently.
+**Cause:** For `registerHotkey` and `useHotkey`, `ignoreInputs` defaults to `true` for bare keys and `Shift` or `Alt` combinations (and `false` for `Control`, `Meta`, and `Escape`). Input elements include `<input>` (except `button`, `submit`, and `reset`), `<textarea>`, `<select>`, `contentEditable`, and elements with an `EditContext`.
 
-- Unknown modifiers such as `'Mdo+S'` and trailing separators such as `'Mod+'` fail with the stroke index and failing token.
-- Literal `+` shortcuts use `'+'`, `'Mod++'`, `'Control++'`, or `'Mod+Plus'`.
-- For user-entered settings, call `parseShortcut(input)` first and check `parsed.ok` before passing `parsed.value` to `registerHotkey` or `setKeymap`.
-- When `dispatcher.setKeymap(entries)` throws, the previous active keymap remains intact.
+**Fix:** Pass `{ ignoreInputs: false }` on the registration when a bare or `Alt` shortcut should fire while typing, or attach `target` directly to the input element itself.
 
-## Punctuation or another keyboard layout behaves differently
+## Shortcut in `useHotkey` and a `FocusScope` keymap both fire or clash
 
-Bind the printed symbol when the shortcut means that character: `?` and `Control++` accept Shift used to produce the glyph. Bind `Shift+[Slash]` or `Control+[KeyE]` when physical key position and exact modifiers matter.
+**Cause:** `HotkeysProvider` runs the focus dispatcher (`dispatcher` or `keymap`) and the document `HotkeyRegistry` (`useHotkey`, `useHotkeySequence`, `useHotkeys`) as separate DOM pipelines.
 
-Letters always require exact Shift matching, and accented Latin letters do not fall back to unaccented letter shortcuts. See [Printed keys and physical keys](concepts.md#printed-keys-and-physical-keys) for edge priority and fallback rules.
+**Fix:** Move shortcuts that share conflict resolution or focus precedence into the focus dispatcher's `keymap` and handle them in `<FocusScope>` or `useFocusNode`.
 
-## It works outside inputs but not inside
+## `useHotkey` fires on the wrong document in an iframe or multi-window app
 
-`registerHotkey` and `getHotkeyRegistry().register` skip shortcuts inside text fields unless you set `ignoreInputs: false`. By default, `ignoreInputs` is `true` for bare keys and Shift or Alt combinations, and `false` for Control and Meta combinations and `Escape`.
+**Cause:** Without a custom `registry`, registration hooks bind to `getHotkeyRegistry()` on the global `document`.
 
-In React, pass `ignoreInputs` in the third argument or set it on `HotkeysProvider`:
+**Fix:** Create a registry for the target document with `createHotkeyRegistry({ document: iframeDoc })` and pass it to `<HotkeysProvider registry={iframeRegistry}>`. Omit `target` (or pass `target: null`) on `useHotkey` and `useHotkeys` so the hook binds to the registry's own document. Note that passing an unresolved `RefObject` (`ref.current === null`) defers registration until the element mounts.
 
-```tsx
-useHotkey('G', goToTop, { ignoreInputs: false })
+## `useHotkeys` throws `Duplicate useHotkeys id`
 
-<HotkeysProvider defaultOptions={{ hotkey: { ignoreInputs: false } }}>{app}</HotkeysProvider>
-```
+**Cause:** Two rows in the same `useHotkeys` call share the same `id`. Planning throws before mutating live registrations and rolls back cleanly.
 
-A dispatcher has no `ignoreInputs` option. Bound keys run wherever focus sits, including text fields, unless their `context` excludes inputs. Attach a context such as `TextInput` to the input node and bind with `Workspace && !TextInput`. `acceptsTextInput` only makes a printable chord prefix pend with a timeout so `replay` can restore the character when no chord follows.
+**Fix:** Give each row in a `useHotkeys` batch a unique `id`, or omit `id` when rows do not need stable identity across reordering.
 
-## A different binding runs than expected
+## A chord never completes or gets shadowed by a shorter shortcut
 
-Inspect the active context stack and run `dispatcher.explain` for the shortcut:
+**Cause:** A shorter prefix (such as `K` when `K C` is also bound) wins without keeping the chord pending, a context predicate does not match the focused stack, or `isAvailable` rejects an earlier stroke.
 
-```ts
-console.log(hotkeys.contextStack())
-console.log(hotkeys.explain('Mod+K Mod+C'))
-```
+**Fix:** Call `dispatcher.explain('K C')` (or `dispatcher.explain('K')` to inspect `continuations`) and check `blockedByPrefix`, `candidates`, and `continuations`:
 
-Check `report.blockedByPrefix`, `report.active`, `report.candidates`, and `report.continuations`. Deepest matching context ranks ahead of source (`user`, `pack`, `base`, `default`) and table order. For keymaps compiled outside a dispatcher, call `explainKeymap(compiled, 'Mod+K Mod+C', { contextStack })`. See [Ranking](keymaps.md#ranking) and [Inspecting resolution with `explain`](keymaps.md#inspecting-resolution-with-explain).
+- `blockedByPrefix.kind === 'shadowed-by-prefix'` names the `winningBinding` that fires immediately before the next stroke.
+- `blockedByPrefix.kind === 'prefix-unavailable'` means an earlier stroke failed `isAvailable` or context matching for all descendants.
+- `status: 'context-mismatch'` means the entry's `context` predicate did not match `dispatcher.contextStack()`.
 
-## A chord ends too early
+## `parseShortcut`, `compileKeymap`, or `setKeymap` throws on a shortcut string
 
-Log `onSequence` to see why the chord closed:
+**Cause:** Keymap compilation uses the strict `parseShortcut` grammar. Common mistakes:
 
-```ts
-createBrowserDispatcher({
-  keymap,
-  onSequence: (event) => console.log(event.keys, event.outcome, event.elapsedMs),
-})
-```
+- Misspelled modifier (`'Mdo+S'`): fix the modifier name.
+- Trailing single `'+'` (`'Mod+'`): to bind the literal plus key, write `'Mod++'` or `'Mod+Plus'`.
+- Modifier-only stroke (`'Control+Shift'`): add a non-modifier key.
+- Unclosed physical bracket (`'[KeyS'`): write `'[KeyS]'` or `{ code: 'KeyS' }`.
 
-- `completed`: a bound chord ran.
-- `timeout`: a pending prefix reached `timeoutMs` (1000 ms by default). The runtime tries bound prefixes and replays unbound printable input in text fields. See [Chords](keymaps.md#chords).
-- `unmatched`: the next key did not match a continuation edge.
-- `unavailable`: `isAvailable` filtered the matching bindings out.
-- `blur`, `hidden`, `pointer`, `superseded`: the window lost focus, the tab hid, a pointer pressed, or focus or keymap changed.
-- `disabled`, `disposed`: the runtime turned off or was disposed.
+A failed `dispatcher.setKeymap` throws before mutating state, leaving the previous keymap active.
 
-## Characters vanish after a chord prefix
+## `KeyStateTracker` or `useKeyHold` reports a stuck key
 
-When a pending prefix mismatches or its candidates decline, the runtime hands each unclaimed buffered stroke to `replay` in order. `createBrowserDispatcher` defaults `replay` to `replayTextInput` to restore typed characters in text fields. In a terminal host, supply `replay` to write encoded keys to the shell. The current unclaimed event passes through normally, so `replay` must not insert it twice.
+**Cause:** The OS or an external tool swallowed a `keyup` event (for example, clipboard utilities, dictation tools, or system shortcuts).
 
-Replay stops if a callback cancels, disables, replaces the keymap, disposes the runtime, or moves focus. Check replayed `input` and `beforeinput` listeners too, because they can trigger those changes after the first restored character. See [Callbacks and nested input](keymaps.md#callbacks-and-nested-input).
+**Fix:** The tracker automatically clears non-modifier keys when a modifier releases and resets on window `blur` and hidden tab visibility. If your app detects dropped keyups from an external source, call `getKeyStateTracker().reset()`. In tests, call `KeyStateTracker.resetInstance()` between cases so listeners and held state do not leak across tests.
 
-## The same shortcut warns about a conflict
+## Left and right `Shift` interfere when checking held state
 
-Registering the same shortcut twice on the same target logs a warning and keeps both registrations. For both `keydown` and `keyup`, the newest eligible handler runs first and returning `false` passes the key to the next handler. Set `conflictBehavior` to `'replace'` to remove the previous registration, `'error'` to throw, or `'allow'` to silence the warning.
+**Cause:** `useHeldKeyCodes()` returns `Record<string, string>` keyed by logical name (`'Shift'`), so holding both sides overwrites the single `'Shift'` slot.
 
-## Holding a key repeats the callback
+**Fix:** Use `useKeyHold('[ShiftLeft]')` and `useKeyHold('[ShiftRight]')` (or `getKeyStateTracker().isKeyHeld('[ShiftLeft]')`), which read `activeCodes` and track each physical side independently until released.
 
-Set `requireReset: true` on a single-stroke registration. The callback fires once per press and re-arms after the key or a modifier is released.
+## React hooks during server rendering (SSR)
+
+All hooks in `@shaulavo/hotkeys/react` render safely on the server without `window` or `document`:
+
+- `useHotkeysDispatcher()` and `usePendingChord()` return `null`.
+- `useFocusNode(...)` returns `{ ref, node: null, dispatcher: null }`.
+- `useHotkeyRegistrations()` returns `{ hotkeys: [], sequences: [] }`.
+- `useHeldKeys()` returns `[]`, `useHeldKeyCodes()` returns `{}`, and `useKeyHold` and `useHotkeyHint` return `false`.
+- `useHotkeyRecorder` and `useHotkeySequenceRecorder` return idle states (`isRecording: false`).

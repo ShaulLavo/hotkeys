@@ -54,7 +54,7 @@ export interface HotkeyRegistrationView {
   /** Normalized strokes separated by spaces, such as `Mod+K Mod+C`. */
   readonly hotkey: string
   readonly strokes: readonly ParsedHotkey[]
-  readonly options: HotkeyOptions
+  readonly options: Readonly<Omit<HotkeyOptions, 'meta'> & { meta?: Readonly<HotkeyMeta> }>
   readonly target: Target
   readonly triggerCount: number
 }
@@ -97,6 +97,7 @@ export type HotkeyRegistry = {
 
 type Registration = {
   readonly id: string
+  readonly order: number
   readonly keys: Shortcut
   strokes: readonly RawHotkey[]
   parsed: readonly ParsedHotkey[]
@@ -107,7 +108,6 @@ type Registration = {
   options: HotkeyOptions
   /** Removes the command handler, which holds the callback. */
   release: () => void
-  hasFired: boolean
   triggerCount: number
   view?: HotkeyRegistrationView
 }
@@ -128,6 +128,8 @@ export type HotkeyRegistryOptions = {
 export function createHotkeyRegistry(options: HotkeyRegistryOptions = {}): HotkeyRegistry {
   const doc = options.document ?? document
   const entries = new Map<string, Registration>()
+  const keyups = new Set<Registration>()
+  const firedKeys = new Set<Registration>()
   const registrations = new Store<ReadonlyMap<string, HotkeyRegistrationView>>(new Map())
   let dirty = false
   let disposed = false
@@ -150,7 +152,7 @@ export function createHotkeyRegistry(options: HotkeyRegistryOptions = {}): Hotke
     beforeKey: () => {},
     reset: () => {
       // Focus loss can prevent the keyup that normally re-arms requireReset shortcuts.
-      for (const entry of entries.values()) entry.hasFired = false
+      firedKeys.clear()
     },
   })
   const root: FocusNode<KeyboardEvent> = dispatcher.createNode()
@@ -179,7 +181,7 @@ export function createHotkeyRegistry(options: HotkeyRegistryOptions = {}): Hotke
   }
   function fire(entry: Registration, event: KeyboardEvent) {
     const { hotkey: shortcut, parsed: strokes } = entry
-    entry.hasFired = true
+    if (entry.options.eventType !== 'keyup') firedKeys.add(entry)
     entry.triggerCount += 1
     entry.view = undefined
     registrations.setState((previous) => new Map(previous).set(entry.id, view(entry)))
@@ -193,21 +195,28 @@ export function createHotkeyRegistry(options: HotkeyRegistryOptions = {}): Hotke
   }
   function run(entry: Registration, event: KeyboardEvent): boolean {
     if (!accepts(entry, event)) return false
-    if (entry.options.requireReset && entry.hasFired) return true
+    if (entry.options.requireReset && firedKeys.has(entry)) return true
     return fire(entry, event) !== false
   }
   function onKeyUp(event: KeyboardEvent) {
-    const input = keyInputFromKeyboardEvent(event)
-    const releases = Array.from(entries.values()).reverse()
-    for (const entry of releases) resetReleased(entry, input)
+    resetReleased(event)
+    if (!keyups.size) return
+    const releases = Array.from(keyups).sort((a, b) => b.order - a.order)
     for (const entry of releases) {
       if (entries.get(entry.id) !== entry || entry.options.eventType !== 'keyup') continue
       if (runKeyUp(entry, event)) break
     }
   }
-  function resetReleased(entry: Registration, input: KeyInput) {
-    if (entry.options.eventType === 'keyup' || !entry.hasFired) return
-    if (isModifierKey(input.key) || releases(entry.parsed.at(-1)!, input)) entry.hasFired = false
+  function resetReleased(event: KeyboardEvent) {
+    if (!firedKeys.size) return
+    const input = keyInputFromKeyboardEvent(event)
+    if (isModifierKey(input.key)) {
+      firedKeys.clear()
+      return
+    }
+    for (const entry of firedKeys) {
+      if (releases(entry.parsed.at(-1)!, input)) firedKeys.delete(entry)
+    }
   }
   function runKeyUp(entry: Registration, event: KeyboardEvent): boolean {
     if (entry.options.enabled === false || entry.strokes.length !== 1) return false
@@ -228,7 +237,8 @@ export function createHotkeyRegistry(options: HotkeyRegistryOptions = {}): Hotke
     registrationOptions: HotkeyOptions = {},
   ): HotkeyRegistrationHandle {
     if (disposed) throw new Error('Hotkey registry is disposed')
-    const id = `hotkey_${++nextId}`
+    const order = ++nextId
+    const id = `hotkey_${order}`
     const configuredOptions = Object.assign({}, registrationOptions)
     const platform = configuredOptions.platform ?? detectPlatform()
     const list = requireShortcut(keys)
@@ -248,6 +258,7 @@ export function createHotkeyRegistry(options: HotkeyRegistryOptions = {}): Hotke
       )
     const entry: Registration = {
       id,
+      order,
       keys: list,
       strokes: binding.strokes,
       parsed: binding.parsed,
@@ -257,11 +268,11 @@ export function createHotkeyRegistry(options: HotkeyRegistryOptions = {}): Hotke
       configuredOptions,
       options: resolvedOptions,
       release: () => {},
-      hasFired: false,
       triggerCount: 0,
     }
     try {
       entries.set(id, entry)
+      if (resolvedOptions.eventType === 'keyup') keyups.add(entry)
       entry.release = root.handle(id, ({ source }) => (source ? run(entry, source) : false))
       publish()
     } catch (error) {
@@ -355,7 +366,11 @@ export function createHotkeyRegistry(options: HotkeyRegistryOptions = {}): Hotke
     entry.parsed = binding.parsed
     entry.strokes = binding.strokes
     entry.hotkey = binding.hotkey
-    if (targetChanged || platformChanged || eventTypeChanged) entry.hasFired = false
+    if (eventTypeChanged) {
+      if (resolved.eventType === 'keyup') keyups.add(entry)
+      if (resolved.eventType !== 'keyup') keyups.delete(entry)
+    }
+    if (targetChanged || platformChanged || eventTypeChanged) firedKeys.delete(entry)
     if (changesKeymap) {
       // A timer must not execute a prefix under the previous options before the next key syncs.
       dirty = true
@@ -367,6 +382,8 @@ export function createHotkeyRegistry(options: HotkeyRegistryOptions = {}): Hotke
     const entry = entries.get(id)
     if (!entry) return false
     entries.delete(id)
+    keyups.delete(entry)
+    firedKeys.delete(entry)
     entry.release()
     return true
   }
@@ -396,10 +413,15 @@ export function createHotkeyRegistry(options: HotkeyRegistryOptions = {}): Hotke
     disposed = true
     if (registries.get(doc) === registry) registries.delete(doc)
     doc.removeEventListener('keyup', onKeyUp, true)
-    dispatcher.dispose()
-    for (const entry of entries.values()) entry.release()
-    entries.clear()
-    registrations.setState(() => new Map())
+    try {
+      dispatcher.dispose()
+    } finally {
+      for (const entry of entries.values()) entry.release()
+      entries.clear()
+      keyups.clear()
+      firedKeys.clear()
+      registrations.setState(() => new Map())
+    }
   }
   const registry: HotkeyRegistry = {
     register,

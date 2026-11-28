@@ -24,7 +24,7 @@ Object.assign(globalThis, {
 const { act, Component, createElement } = await import('react')
 const { createRoot } = await import('react-dom/client')
 const { getHotkeyRegistry } = await import('@shaulavo/hotkeys')
-const { useHotkeys, useHotkeySequences } = await import('@shaulavo/hotkeys/react')
+const { useHotkeys } = await import('@shaulavo/hotkeys/react')
 
 class Boundary extends Component<
   { children?: ReactNode; onError: (error: unknown) => void },
@@ -99,7 +99,7 @@ async function checkFailedBatch(sequence: boolean): Promise<void> {
             { hotkey: 'A', callback: failedCallback, options: { conflictBehavior: 'error' } },
           ],
     )
-    useHotkeySequences(
+    useHotkeys(
       sequence
         ? [
             { sequence: ['G', 'H'], callback: failedCallback },

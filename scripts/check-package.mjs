@@ -90,6 +90,39 @@ async function checkMapping(targetJs, targetMap, sourceIndex, sourceFile, functi
   assert(entry.originalColumn >= 0 && entry.originalColumn < originalLine.length)
 }
 
+async function checkMinimalHook(directory) {
+  await writeFile(
+    join(directory, 'hook.ts'),
+    `
+import { useHotkey } from '@shaulavo/hotkeys/react'
+export function Save() {
+  useHotkey('Mod+S', () => {})
+  return null
+}
+`,
+  )
+  execFileSync(
+    'bun',
+    [
+      'build',
+      'hook.ts',
+      '--target=browser',
+      '--minify',
+      '--external=react',
+      '--external=react-dom',
+      '--outfile=hook.js',
+    ],
+    { cwd: directory },
+  )
+  const bundle = await readFile(join(directory, 'hook.js'), 'utf8')
+  assert.doesNotMatch(
+    bundle,
+    /useFocusNode requires a HotkeysProvider/,
+    'Importing useHotkey must exclude the focus provider',
+  )
+  console.log('The minimal useHotkey bundle excludes the focus provider.')
+}
+
 const temporary = await mkdtemp(join(tmpdir(), 'hotkeys-consumer-'))
 
 try {
@@ -136,10 +169,14 @@ try {
   console.log('Packed JavaScript source maps resolve to embedded TypeScript originals.')
   const consumer = `
 import assert from 'node:assert/strict'
-import { createDispatcher, createKeyInput, matchesKeyInput, parseHotkey, getHotkeyRegistry } from '@shaulavo/hotkeys'
+import { createDispatcher, createKeyInput, matchesKeyInput, parseHotkey } from '@shaulavo/hotkeys'
 import {
-  getHotkeyRegistry as reactRegistry,
+  createHotkeysContext,
+  FocusScope,
   HotkeysProvider,
+  useFocusNode,
+  useHotkeysDispatcher,
+  usePendingChord,
   useHeldKeyCodes,
   useHeldKeys,
   useHotkey,
@@ -149,7 +186,6 @@ import {
   useHotkeys,
   useHotkeySequence,
   useHotkeySequenceRecorder,
-  useHotkeySequences,
   useKeyHold,
 } from '@shaulavo/hotkeys/react'
 import { createElement } from 'react'
@@ -157,7 +193,7 @@ import { renderToString } from 'react-dom/server'
 import { HotkeyRecorder, HotkeySequenceRecorder } from '@shaulavo/hotkeys'
 assert.equal(parseHotkey('Mod+S', 'linux').ctrl, true)
 assert.equal(parseHotkey('Mod+S', 'mac').meta, true)
-assert.equal(reactRegistry, getHotkeyRegistry)
+assert.equal(typeof createHotkeysContext().useFocusNode, 'function')
 
 for (const [glyph, code] of [['?', 'Slash'], ['+', 'Equal']]) {
   const input = createKeyInput({ key: glyph, code, modifiers: { shift: true } })
@@ -276,9 +312,11 @@ const callback = () => {
 }
 function ShortcutPreview() {
   useHotkey('Mod+S', callback)
-  useHotkeys([{ hotkey: 'Escape', callback }])
+  useHotkeys([{ hotkey: 'Escape', callback }, { sequence: ['D', 'D'], callback }])
   useHotkeySequence(['G', 'G'], callback)
-  useHotkeySequences([{ sequence: ['D', 'D'], callback }])
+  assert.equal(useHotkeysDispatcher(), null)
+  assert.equal(usePendingChord(), null)
+  assert.equal(useFocusNode({ context: 'Workspace' }).node, null)
   const registrations = useHotkeyRegistrations()
   const heldKeys = useHeldKeys()
   const heldCodes = useHeldKeyCodes()
@@ -300,9 +338,9 @@ function ShortcutPreview() {
   return createElement('button', null, 'Save')
 }
 
-const app = createElement(HotkeysProvider, null, createElement(ShortcutPreview))
+const app = createElement(HotkeysProvider, { keymap: [] }, createElement(FocusScope, null, createElement(ShortcutPreview)))
 const firstRender = renderToString(app)
-assert.equal(firstRender, '<button>Save</button>')
+assert.equal(firstRender, '<div><button>Save</button></div>')
 assert.equal(renderToString(app), firstRender)
 assert.equal(callbackCount, 0)
 assert.equal(typeof window, 'undefined')
@@ -328,21 +366,27 @@ for (const Recorder of [HotkeyRecorder, HotkeySequenceRecorder]) {
 }
 `
   await writeFile(join(temporary, 'consumer.mjs'), consumer)
-  execFileSync(process.execPath, ['consumer.mjs'], { cwd: temporary, stdio: 'inherit' })
+  for (const NODE_ENV of ['development', 'production']) {
+    execFileSync(process.execPath, ['consumer.mjs'], {
+      cwd: temporary,
+      env: { ...process.env, NODE_ENV },
+      stdio: 'inherit',
+    })
+  }
   const batchConsumer = await readFile(join(root, 'scripts/fixtures/batch-consumer.ts'), 'utf8')
   await writeFile(join(temporary, 'batch-consumer.ts'), batchConsumer)
   await writeFile(join(temporary, 'batch-consumer.mjs'), stripTypeScriptTypes(batchConsumer))
   execFileSync(process.execPath, ['batch-consumer.mjs'], { cwd: temporary, stdio: 'inherit' })
   await writeFile(
     join(temporary, 'consumer.ts'),
-    `import { createDispatcher, createHotkeyRegistry, normalizeHotkey, HotkeyRecorder, HotkeySequenceRecorder, parseHotkey } from '@shaulavo/hotkeys'
-import { useHotkey, useHotkeys, useHotkeySequence, useHotkeySequences } from '@shaulavo/hotkeys/react'
-import type { Hotkey } from '@shaulavo/hotkeys'
+    `import { createBrowserDispatcher, createDispatcher, createHotkeyRegistry, normalizeHotkey, parseShortcut, HotkeyRecorder, HotkeySequenceRecorder, parseHotkey } from '@shaulavo/hotkeys'
+import { createHotkeysContext, useHotkey, useHotkeys, useHotkeySequence } from '@shaulavo/hotkeys/react'
+import type { Hotkey, HostedBrowserDispatcher, HostedFocusNode, KeymapEntry } from '@shaulavo/hotkeys'
 import { createTerminalDispatcher } from '@shaulavo/hotkeys/terminal'
 import { trieStep } from '@shaulavo/hotkeys/adapter'
 createTerminalDispatcher()
 void trieStep
-import type { ReactHotkeySequenceRecorder, UseHotkeyDefinition, UseHotkeySequenceDefinition } from '@shaulavo/hotkeys/react'
+import type { ReactHotkeySequenceRecorder, UseHotkeyDefinition } from '@shaulavo/hotkeys/react'
 parseHotkey('Mod+S', 'linux')
 createDispatcher({ platform: 'linux', keymap: [] })
 useHotkey('Mod+S', () => {})
@@ -364,16 +408,45 @@ const readonlySequences = [{ sequence: ['G', 'G'], callback: () => {} }] as cons
 normalizeHotkey(readonlySequence)
 useHotkeySequence(readonlySequence, () => {})
 useHotkeys(readonlyHotkeys)
-useHotkeySequences(readonlySequences)
+useHotkeys(readonlySequences)
 
 const mutableSequence: Hotkey[] = ['G', 'G']
 const mutableHotkeys: Array<UseHotkeyDefinition> = [{ hotkey: 'Escape', callback: () => {} }]
-const mutableSequences: Array<UseHotkeySequenceDefinition> = [{ sequence: mutableSequence, callback: () => {} }]
+const mutableSequences: Array<UseHotkeyDefinition> = [{ sequence: mutableSequence, callback: () => {} }]
 mutableSequence.push('Escape')
 normalizeHotkey(mutableSequence)
 useHotkeySequence(mutableSequence, () => {})
 useHotkeys(mutableHotkeys)
-useHotkeySequences(mutableSequences)
+useHotkeys(mutableSequences)
+
+
+const App = createHotkeysContext<{ select: { index: number }; quit: void }>()
+const dynamic = parseShortcut('Mod+K Mod+C')
+if (dynamic.ok) {
+  useHotkey(dynamic.value, () => {})
+  useHotkeys([{ hotkey: dynamic.value, callback: () => {} }])
+  const table: readonly KeymapEntry<{ select: { index: number }; quit: void }>[] = [
+    { keys: dynamic.value, command: 'select', args: { index: 1 } },
+  ]
+  const dispatcher = createBrowserDispatcher<{ select: { index: number }; quit: void }>({ keymap: table })
+  const host = dispatcher.createNode({ commands: { select: ({ args }) => args.index > 0 } })
+  function installWidget(hosted: HostedBrowserDispatcher, parent: HostedFocusNode) {
+    const widget = hosted.createNode({ parent, commands: {
+      'terminal.copy': () => {},
+      select: ({ args }) => typeof args === 'object' && args !== null
+        && 'widgetIndex' in args && typeof args.widgetIndex === 'string',
+    } })
+    return hosted.attachElement(widget, document.createElement('div'))
+  }
+  const widget = installWidget(dispatcher.asHosted(), host)
+  dispatcher.dispatchCommandFrom(host, 'select', { index: 1 })
+  widget()
+  dispatcher.dispose()
+}
+function UseAppNode() {
+  return App.useFocusNode({ commands: { select: ({ args }) => args.index >= 0 } })
+}
+void UseAppNode
 
 const recorderSteps: ReactHotkeySequenceRecorder['steps'] = []
 const recordedSequence: NonNullable<ReactHotkeySequenceRecorder['recordedSequence']> = []
@@ -406,6 +479,7 @@ recordedSequence.push('Escape')
     )
   }
   console.log('Packed declarations resolve with Bundler and NodeNext outside the workspace.')
+  if (!bun) await checkMinimalHook(temporary)
 } finally {
   await rm(temporary, { recursive: true, force: true })
 }

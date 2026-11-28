@@ -1,6 +1,6 @@
 {
   "name": "@shaulavo/hotkeys",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Keyboard shortcut registration, chords, context-aware keymaps, display formatting, and optional React hooks for browser and terminal apps.",
   "keywords": [
     "browser",
@@ -83,8 +83,8 @@
   },
   "peerDependencies": {
     "@tanstack/react-store": "^0.11.1",
-    "react": ">=18",
-    "react-dom": ">=18"
+    "react": ">=19.2.0",
+    "react-dom": ">=19.2.0"
   },
   "peerDependenciesMeta": {
     "@tanstack/react-store": {
@@ -98,6 +98,6 @@
     }
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   }
 }

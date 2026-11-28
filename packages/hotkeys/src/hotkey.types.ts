@@ -133,15 +133,15 @@ export type Hotkey =
 /** Resolved modifier flags shared by both parsed binding variants. */
 export interface ParsedModifiers {
   /** Whether Control is required. */
-  ctrl: boolean
+  readonly ctrl: boolean
   /** Whether Shift is required. */
-  shift: boolean
+  readonly shift: boolean
   /** Whether Alt is required. */
-  alt: boolean
+  readonly alt: boolean
   /** Whether Meta (Command) is required. */
-  meta: boolean
+  readonly meta: boolean
   /** Required modifiers in canonical order. */
-  modifiers: Array<CanonicalModifier>
+  readonly modifiers: readonly CanonicalModifier[]
 }
 
 /**
@@ -154,7 +154,10 @@ export interface ParsedModifiers {
  * parseHotkey('Alt+[KeyS]') // { code: 'KeyS', alt: true, ... } — no key property
  */
 export type ParsedHotkey = ParsedModifiers &
-  ({ key: LogicalKey | (string & {}); code?: never } | { code: string; key?: never })
+  (
+    | { readonly key: LogicalKey | (string & {}); readonly code?: never }
+    | { readonly code: string; readonly key?: never }
+  )
 
 /**
  * A raw hotkey object for programmatic registration.

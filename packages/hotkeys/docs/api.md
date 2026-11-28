@@ -1,204 +1,303 @@
 # API reference
 
-Every public export of `@shaulavo/hotkeys`, grouped by entrypoint and job. The root entrypoint manifest lives in [`src/index.ts`](../src/index.ts).
+`@shaulavo/hotkeys` exposes four ESM entrypoints with explicit named exports and no wildcard re-exports. Requires Node `>=24`. The `./react` entrypoint requires optional peer dependencies `react >=19.2.0`, `react-dom >=19.2.0`, and `@tanstack/react-store ^0.11.1`.
 
-`@shaulavo/hotkeys` ships four explicit entrypoints:
+See [src/index.ts](../src/index.ts) for the exact core export list.
 
-- `@shaulavo/hotkeys` for registration, focus dispatch, diagnostics, parsing, formatting, and recording.
-- `@shaulavo/hotkeys/terminal` for parsed terminal key events.
-- `@shaulavo/hotkeys/adapter` for low-level trie, predicate, chord runtime, and DOM listener helpers.
-- `@shaulavo/hotkeys/react` for React hooks over the document registry, held-key state, and recorders.
+## Entrypoints
 
-## Register shortcuts
+| Import path                  | Runtime exports | Purpose                                                                                                                                     |
+| ---------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@shaulavo/hotkeys`          | 28              | Parsing, formatting, matching, quick registration, `HotkeyRegistry`, focus-tree dispatchers, `explainKeymap`, recorders, `KeyStateTracker`. |
+| `@shaulavo/hotkeys/react`    | 16              | `createHotkeysContext`, `HotkeysProvider`, `FocusScope`, focus hooks, registration hooks, held-key hooks, recorder hooks.                   |
+| `@shaulavo/hotkeys/terminal` | 3               | `createTerminalDispatcher`, `keyInputFromTerminalKey`, `terminalKeyEffects`.                                                                |
+| `@shaulavo/hotkeys/adapter`  | 9               | Low-level trie, chord runtime, predicate evaluation, and browser key listeners.                                                             |
 
-| Export                                              | Behavior                                                                                                                                               |
-| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `registerHotkey(keys, callback, options?)`          | Registers a stroke or sequence on the target document's shared registry and returns a `HotkeyRegistration`.                                            |
-| `getHotkeyRegistry(doc?)`                           | Returns the shared `HotkeyRegistry` for a document, creating it on first use.                                                                          |
-| `createHotkeyRegistry(options?)`                    | Creates an owned `HotkeyRegistry`. Accepts `{ document?, timeoutMs?, capture? }`.                                                                      |
-| `HotkeyRegistry.register(keys, callback, options?)` | Registers a stroke or sequence and returns a handle with `dispose()`, `[Symbol.dispose]()`, `setOptions`, `replaceOptions`, and a settable `callback`. |
-| `HotkeyRegistry.registrations`                      | TanStack Store holding `ReadonlyMap<string, HotkeyRegistrationView>` for command palettes and devtools.                                                |
-| `HotkeyRegistry.trigger(id)`                        | Runs a registration callback without a keyboard event and returns whether the registration existed.                                                    |
-| `HotkeyRegistry.dispatcher`                         | Exposes the underlying `BrowserDispatcher`.                                                                                                            |
-| `HotkeyRegistry.dispose()`                          | Removes listeners and clears every registration in the registry. Also available as `[Symbol.dispose]()`.                                               |
-| `findHotkeyConflicts(candidate, options?)`          | Lists live registrations that collide with a candidate stroke or sequence, including prefix overlap.                                                   |
+Every entrypoint exports `"types"`, `"import"`, and `"default"` conditions, plus `./package.json`.
 
-`HotkeyOptions` accepts `conflictBehavior` (`'warn'` by default, or `'error'`, `'replace'`, `'allow'`), `enabled`, `eventType` (`'keydown'` or `'keyup'`), `ignoreInputs`, `platform`, `preventDefault`, `requireReset`, `stopPropagation`, `target`, and `meta`.
+---
 
-Every callback receives `(event, context)`, where `context` is `HotkeyCallbackContext`:
+## `@shaulavo/hotkeys`
 
-- `shortcut`: canonical string for the full binding (`'Mod+S'` or `'G I'`).
-- `strokes`: frozen array of resolved `ParsedHotkey` objects in order.
-- `stroke`: completing `ParsedHotkey` (`strokes.at(-1)`).
+### Quick registration and registry
 
-`HotkeyRegistrationView` returns frozen `strokes` and `options` snapshots so readers cannot mutate live registry state.
+#### `registerHotkey(keys, callback, options?)`
 
-Both `keydown` and `keyup` registrations run newest first and pass the event to the next matching registration when a callback returns `false`.
+Registers a single stroke or multi-stroke chord on the document registry for `options?.target` (or the global `document`). Returns a `HotkeyRegistration`.
 
-If publishing a new registration to `registrations` subscribers throws, `register` removes that call's entry and command handler before rethrowing the original error. Other registrations stay intact, and a prior `conflictBehavior: 'replace'` removal is not undone.
+- `keys`: `HotkeyInput` (`Hotkey | RawHotkey | readonly HotkeyStroke[] | Shortcut`).
+- `callback`: `(event: KeyboardEvent, context: HotkeyCallbackContext) => void | boolean`. Returning `false` passes the key to the next matching registration.
+- `HotkeyCallbackContext`: `{ readonly shortcut: string; readonly strokes: readonly ParsedHotkey[]; readonly stroke: ParsedHotkey }`. `shortcut` is the space-separated canonical chord, `strokes` holds every resolved stroke in order, and `stroke` is the completing stroke.
+- `options`: `HotkeyOptions`:
+  - `conflictBehavior?: 'warn' | 'error' | 'replace' | 'allow'` (default `'warn'`).
+  - `enabled?: boolean` (default `true`). Disabled entries stay listed in `registrations` without firing.
+  - `eventType?: 'keydown' | 'keyup'` (default `'keydown'`). Both `keydown` and `keyup` run newest-first and honor `return false` fallthrough.
+  - `ignoreInputs?: boolean`. Defaults to `false` for `Control`, `Meta`, and `Escape`; defaults to `true` for bare keys and `Shift` or `Alt` bindings.
+  - `platform?: Platform` (`'mac' | 'windows' | 'linux'`). Defaults to `detectPlatform()`.
+  - `preventDefault?: boolean` (default `true`).
+  - `stopPropagation?: boolean` (default `true`).
+  - `requireReset?: boolean` (default `false`). Fires once per press until the key or a modifier is released, or until window blur or tab hide resets held state.
+  - `target?: HotkeyTarget | null` (`HTMLElement | Document | Window`). Defaults to the registry's document. Must belong to that document.
+  - `meta?: HotkeyMeta` (`{ name?: string; description?: string; group?: string }`, extensible via module augmentation).
 
-### Update a registration
+#### `HotkeyRegistration`
 
-`handle.setOptions(patch)` merges the provided fields into the current configuration and preserves omitted fields. `handle.replaceOptions(options)` replaces the configuration so omitted fields return to their defaults. Setting any field to `undefined` restores its default. When `ignoreInputs` is unset, Control and Meta combinations and `Escape` fire inside text fields, while bare keys and Shift or Alt combinations are skipped.
+Returned by `registerHotkey` and `registry.register`:
 
-Both setters preserve the handle, registration order, `callback`, and `triggerCount`. Changing `platform` reparses the original strokes so `Mod` follows the new platform while literal `Control` and `Meta` keep their meaning. Changing `target` moves scope inside the registry's document without moving the document listener. A target from another document throws before mutating the registration. Call `createHotkeyRegistry({ document: otherDocument })` for another document.
+- `id: string`
+- `isActive: boolean`
+- `callback: HotkeyCallback` (settable without re-registering)
+- `setOptions(options: Partial<HotkeyOptions>): void` patches options; omission keeps existing values, explicit `undefined` restores defaults.
+- `replaceOptions(options: HotkeyOptions): void` replaces all configured options; omitted fields return to defaults.
+- `dispose(): void` and `[Symbol.dispose](): void` remove the registration.
 
-Changes to matching or event behavior cancel any pending chord. Changes to `target`, `platform`, or `eventType` also re-arm `requireReset`. Metadata updates, `callback` swaps, and no-op option updates preserve pending input. Changing `target`, `eventType`, or resolved keys checks conflicts with the active `conflictBehavior`, and a rejected update leaves the existing registration active. Option updates on a disposed handle do nothing.
+#### `getHotkeyRegistry(doc?)` and `createHotkeyRegistry(options?)`
 
-## Route keys by focus
+- `getHotkeyRegistry(doc = document)` returns the shared `HotkeyRegistry` for `doc`, creating it on first use.
+- `createHotkeyRegistry(options?)` creates an isolated `HotkeyRegistry`.
+  - `options?: { readonly document?: Document; readonly timeoutMs?: number; readonly capture?: boolean }`.
+- `HotkeyRegistry` members:
+  - `register(keys, callback, options?) => HotkeyRegistration`
+  - `registrations: Store<ReadonlyMap<string, HotkeyRegistrationView>>` holding frozen snapshots (`id`, `hotkey`, `strokes`, `options`, `target`, `triggerCount`).
+  - `trigger(id: string): boolean` runs a registration's callback programmatically with a synthesized `KeyboardEvent` and full `HotkeyCallbackContext`.
+  - `dispatcher: BrowserDispatcher` exposes the registry's underlying dispatcher.
+  - `dispose()` and `[Symbol.dispose]()` detach listeners, clear registrations, and remove the registry from the document cache if it was the shared instance.
 
-| Export                                                 | Behavior                                                                                                                               |
-| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `createBrowserDispatcher<Commands>(options?)`          | Creates a `BrowserDispatcher` with DOM listeners, `attachElement`, `nodeForElement`, `claimKeybinding`, `observeKeys`, and `asHosted`. |
-| `createDispatcher<Source, Commands>(options?)`         | Creates a DOM-free `Dispatcher` for custom or headless hosts.                                                                          |
-| `Dispatcher.createNode(options?)`                      | Creates a `FocusNode` with `parent`, `context` or `readContext`, and `commands`.                                                       |
-| `Dispatcher.focus(node)`                               | Moves focus to an owned node or `null`.                                                                                                |
-| `Dispatcher.focused()`                                 | Returns the focused `FocusNode` or `null`.                                                                                             |
-| `Dispatcher.hasNode(node)`                             | Returns whether the dispatcher owns the node and its entire ancestor chain.                                                            |
-| `Dispatcher.contextStack()`                            | Returns non-empty contexts from the outermost node to the focused node.                                                                |
-| `Dispatcher.setKeymap(entries)`                        | Compiles and validates the full table, then swaps the active keymap. Failed compilation leaves the prior keymap active.                |
-| `Dispatcher.handleKey(input, source, inScope?)`        | Offers one `KeyInput` and returns whether a binding claimed it.                                                                        |
-| `Dispatcher.dispatchCommand(command, args?)`           | Runs a command along the current focus path without a key event.                                                                       |
-| `Dispatcher.dispatchCommandFrom(node, command, args?)` | Runs a command along an owned node's path without moving focus.                                                                        |
-| `Dispatcher.explain(input, options?)`                  | Inspects how the active keymap resolves a shortcut or `KeyInput` stream without side effects.                                          |
-| `Dispatcher.pending()`                                 | Returns the current frozen `PendingChordLabel` or `null`. Referentially stable while unchanged.                                        |
-| `Dispatcher.subscribePending(listener)`                | Subscribes to pending-chord changes and returns an unsubscribe function.                                                               |
-| `Dispatcher.wantsCapture()`                            | Returns whether a chord is pending or a claimed key is held.                                                                           |
-| `Dispatcher.capturesKey(input)`                        | Returns whether a capturing host listener should offer this key ahead of other listeners.                                              |
-| `Dispatcher.releaseAll()`                              | Clears held-key ownership after focus loss or tab hide.                                                                                |
-| `Dispatcher.cancel(outcome?)`                          | Cancels any pending chord with the given `ChordOutcome`.                                                                               |
-| `Dispatcher.dispose()`                                 | Clears nodes, removes listeners, and disposes the chord runtime. Also available as `[Symbol.dispose]()`.                               |
-| `compileKeymap<Commands>(entries, platform)`           | Parses and validates entries once into a `CompiledKeymap` with a prebuilt trie in `root`.                                              |
-| `explainKeymap(keymap, input, options?)`               | Pure read-only lookup over a `CompiledKeymap` with prefix-shadowing and availability diagnostics.                                      |
-| `createKeyContext(init?)`, `parseKeyContext(src)`      | Builds a `KeyContext` from `{ identifiers?, values? }` or shorthand such as `'Editor extension=md'`.                                   |
-| `parseContextPredicate(source)`                        | Parses a `context` predicate expression for reuse or inspection.                                                                       |
+#### `findHotkeyConflicts(candidate, options?)`
 
-`DispatcherOptions` accepts `keymap`, `platform`, `effects`, `replay`, `acceptsTextInput`, `isAvailable`, `currentFocus`, `timeoutMs`, `onPendingChange`, `onSequence`, and `onCaptureChange`. `BrowserDispatcherOptions` replaces `effects` with `root`, `capture`, and `beforeKey`.
+Searches a live `HotkeyRegistry` for equivalent bindings and sequence-prefix collisions, returning `HotkeyConflict[]` (`{ type: 'hotkey' | 'sequence', registration: HotkeyRegistrationView }`).
 
-### Typed commands and hosted widgets
+- `options?: HotkeyConflictOptions`: `target`, `scope?: 'overlapping' | 'all'`, `eventType`, `includeDisabled`, `excludeIds`, `exclude`, `platform`, `events` (source events to detect logical and physical overlap on the recorded layout), and `registry`.
 
-Pass a `CommandMap` type argument to `createBrowserDispatcher<Commands>` or `createDispatcher<Source, Commands>` to type command names and `args` across `KeymapEntry<Commands>`, `FocusNode.handle`, `dispatchCommand`, and `dispatchCommandFrom`. Commands mapped to `void` or a type that includes `undefined` make `args` optional. All other commands require `args`.
+---
 
-When a typed host embeds an external widget such as a terminal or editor, call `dispatcher.asHosted()` to get a `HostedBrowserDispatcher` and pass any `FocusNode<KeyboardEvent, Commands>` directly as a `HostedFocusNode` parent. `HostedFocusNode` exposes read-only `{ id, parent, context }`, so closed host command maps stay strictly typed while embedded widgets attach child nodes without casts and validate `event.args` at runtime.
+### Focus-aware dispatchers and keymaps
 
-### Diagnostics with `explain` and `explainKeymap`
+#### `createBrowserDispatcher<Commands = AnyCommands>(options?)`
 
-`dispatcher.explain(input, options?)` and `explainKeymap(keymap, input, options?)` inspect a shortcut string, `HotkeyInput`, or `readonly KeyInput[]` stream over one fixed `contextStack` snapshot without running handlers, mutating focus, or changing pending timers.
+Creates a DOM-backed `BrowserDispatcher<Commands>` whose focus path follows DOM containment of attached elements.
 
-`ExplainOptions` accepts `contextStack`, `sources` (one source per stroke), `source` (shorthand for a single-stroke query), and `isAvailable` (on `explainKeymap`). Each `KeymapExplanation` reports:
+- `options?: BrowserDispatcherOptions<Commands>`:
+  - `keymap?: readonly KeymapEntry<Commands>[]`
+  - `root?: HTMLElement | Document` (defaults to `globalThis.document`)
+  - `capture?: boolean` (default `false`; listens in capture phase when `true`)
+  - `platform?: Platform`
+  - `timeoutMs?: number` (default `1000`)
+  - `isAvailable?: (binding: CompiledBinding<Commands>, event: KeyboardEvent) => boolean`
+  - `beforeKey?: (event: KeyboardEvent) => void`
+  - `acceptsTextInput?: (event: KeyboardEvent) => boolean`
+  - `replay?: (input: KeyInput, event: KeyboardEvent) => void`
+  - `currentFocus?: () => unknown`
+  - `onPendingChange?: (pending: PendingChordLabel | null) => void`
+  - `onSequence?: (event: KeymapSequenceEvent<CompiledBinding<Commands>>) => void`
+  - `onCaptureChange?: () => void`
+- `BrowserDispatcher<Commands>` extends `Dispatcher<KeyboardEvent, Commands>` with:
+  - `attachElement(node: HostedFocusNode, element: Element): () => void`
+  - `nodeForElement(element: Element): FocusNode<KeyboardEvent, Commands> | null`
+  - `claimKeybinding(event: KeyboardEvent): boolean` offers an event once before DOM dispatch reaches `root` (idempotent per event).
+  - `observeKeys(observer: BrowserKeyObserver): () => void` observes `beforeKey` and `reset(reason)`.
+  - `asHosted(): HostedBrowserDispatcher` returns a narrow structural boundary (`createNode`, `attachElement`, `nodeForElement`, `claimKeybinding`, `observeKeys`, `contextStack`) for embedded widgets that use string command names and validate `event.args` at runtime.
 
-- `active`: ordered `CompiledBinding` winners at the queried node, or empty when blocked by an earlier prefix.
-- `candidates`: every candidate at the final node with `status` (`'matched'`, `'context-mismatch'`, `'unavailable'`, `'availability-unknown'`, `'unbound'`, `'shadowed'`, or `'shadowed-by-prefix'`), `depth`, `rank`, and `blockedByIndex`.
-- `continuations`: descendant chords below the queried node with `status` (`'pending'`, `'shadowed-by-prefix'`, `'unavailable'`, or `'availability-unknown'`) and `shadowedByIndex`.
-- `pending`: whether live dispatch would wait for a longer chord.
-- `blockedByPrefix`: non-null when an earlier prefix stops live dispatch from reaching this chord, with `kind` (`'shadowed-by-prefix'` or `'prefix-unavailable'`), `strokeIndex`, `winningBinding`, and `availability` (`'known'` or `'unknown'`).
-- `mismatchedAtStrokeIndex` and `ignored`: populated when a stroke has no trie edge or when a `KeyInput` is skipped (`'keyup'`, `'composing'`, `'modifier-only'`, `'repeat'`, or `'repeat-on-chord-prefix'`).
+#### `createDispatcher<Source = unknown, Commands = AnyCommands>(options?)`
 
-## Parse, match, and format
+Creates a host-agnostic `Dispatcher<Source, Commands>`.
 
-| Export                                           | Behavior                                                                                                                                                   |
-| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `parseShortcut(input)`                           | Validates a stroke, chord string, `RawHotkey`, or stroke array and returns `{ ok: true, value: Shortcut, warnings }` or `{ ok: false, errors, warnings }`. |
-| `parseHotkey(input, platform?)`                  | Parses a string, `RawHotkey`, `ParsedHotkey`, `KeyInput`, or `KeyboardEventLike` into a `ParsedHotkey` with `Mod` resolved for `platform`.                 |
-| `normalizeHotkey(input, options?)`               | Normalizes a stroke, chord, `ParsedHotkey`, `KeyInput`, or `KeyboardEventLike`. Options: `{ mode?, platform? }`.                                           |
-| `formatForDisplay(input, options?)`              | Formats a stroke, chord, or `ParsedHotkey` for UI display, such as `⌘ S` on macOS or `Ctrl+S` on Linux and Windows.                                        |
-| `matchesKeyboardEvent(event, hotkey, platform?)` | Tests a `KeyboardEvent` against a `Hotkey` or `ParsedHotkey`.                                                                                              |
-| `matchesKeyInput(input, hotkey, platform?)`      | Tests a `KeyInput` against a `Hotkey` or `ParsedHotkey`.                                                                                                   |
-| `areHotkeysEqual(left, right, platform?)`        | Compares resolved modifiers and exact logical `key` or physical `code`. Physical codes stay distinct from logical keys.                                    |
-| `detectPlatform()`                               | Returns `'mac'`, `'windows'`, or `'linux'`. Defaults to `'linux'` when `navigator` is absent.                                                              |
-| `isModifierKey(key)`                             | Returns whether a key name or alias is a modifier token.                                                                                                   |
-| `normalizeKeyName(key)`                          | Normalizes DOM key spellings and aliases to canonical names.                                                                                               |
-| `createKeyInput(init)`                           | Builds a host-independent `KeyInput`.                                                                                                                      |
-| `keyInputFromKeyboardEvent(event, platform?)`    | Converts a browser `KeyboardEventLike` into a `KeyInput`.                                                                                                  |
+- `createNode(options?: FocusNodeOptions<Source, Commands>): FocusNode<Source, Commands>` creates a node with optional `parent`, static `context`, dynamic `readContext`, and `commands`. Every `FocusNode` is directly assignable to `HostedFocusNode` (`{ id, parent, context }`).
+- `focus(node)` and `focused()` get or set the active `FocusNode`.
+- `hasNode(node)` reports whether the dispatcher owns `node` and every ancestor.
+- `contextStack()` returns active `KeyContext[]` from outermost node to focused node.
+- `setKeymap(entries)` strictly validates and compiles the new keymap before replacing state. If any entry is malformed, `setKeymap` throws and leaves the previous keymap, pending chord, and revision unchanged.
+- `handleKey(input, source, inScope?)` dispatches one `KeyInput`, returning `true` when claimed.
+- `dispatchCommand(command, args?)` and `dispatchCommandFrom(node, command, args?)` invoke command handlers along the focus path without a key event. `args` is optional when `Commands[K]` includes `undefined` (or is `void`), and required otherwise.
+- `explain(input, options?)` inspects how the active keymap resolves `input` against the current (or supplied) `contextStack` without mutating state or invoking handlers.
+- `pending(): PendingChordLabel | null` returns a frozen, referentially stable `{ keys: string; candidateCount: number }` snapshot (or `null`), safe for `useSyncExternalStore`. `keys` contains space-separated platform-resolved stroke strings (for example `'Control+K'` on Linux or `'Meta+K'` on macOS).
+- `subscribePending(listener)` subscribes to pending-label transitions and returns an unsubscribe function. Reentrant cancellation or replacement aborts stale outer notification loops.
+- `wantsCapture()`, `capturesKey(input)`, `releaseAll()`, `cancel(outcome?)`, `dispose()`, `[Symbol.dispose]()`.
 
-`parseShortcut` accepts `'+'`, `'Mod++'`, `'Control++'`, `'Ctrl+Shift++'`, and `'Mod+Plus'`, and rejects trailing empty tokens such as `'Mod+'`, unknown modifiers such as `'Mdo+S'`, modifier-only strokes, malformed brackets, and empty sequences. Unknown key names stay `ok: true` and populate `warnings` so callers can enforce `warnings.length === 0`.
+#### `compileKeymap(entries, platform)` and `explainKeymap(keymap, input, options?)`
 
-`normalizeHotkey` supports three `mode` values:
+- `compileKeymap(entries, platform)` strictly validates every entry with `parseShortcut`, parses context predicates, and compiles the trie once. Throws with entry index, stroke index, and failing token on malformed entries.
+- `explainKeymap(keymap, input, options?)` accepts a `HotkeyInput`, string, or `readonly KeyInput[]` stream plus `ExplainOptions` (`contextStack`, `sources`, `source`, `isAvailable`). Returns `KeymapExplanation`:
+  - `active`: ordered `CompiledBinding[]` that live dispatch would try (empty when blocked by an earlier prefix).
+  - `candidates`: every entry at the final node with `status` (`'matched' | 'context-mismatch' | 'unavailable' | 'availability-unknown' | 'unbound' | 'shadowed' | 'shadowed-by-prefix'`), `depth`, `rank`, and `blockedByIndex`.
+  - `continuations`: reachable and prefix-shadowed longer chords below the queried node with `status` (`'pending' | 'shadowed-by-prefix' | 'unavailable' | 'availability-unknown'`) and `shadowedByIndex`.
+  - `pending`: whether the queried node pends for a longer chord.
+  - `blockedByPrefix`: `null` or `{ kind: 'shadowed-by-prefix', strokeIndex, winningBinding, availability }` or `{ kind: 'prefix-unavailable', strokeIndex, winningBinding: null, availability }`.
+  - `mismatchedAtStrokeIndex?: number` and `ignored?: { strokeIndex, reason }`.
 
-- `'symbolic'` (default): preserves `Mod`, literal `Control`, and literal `Meta` for storage and settings.
-- `'resolved'`: resolves `Mod` for `options.platform ?? detectPlatform()` (`'Mod+S'` becomes `'Meta+S'` on macOS and `'Control+S'` on Linux and Windows).
-- `'adaptive'`: folds the platform's primary literal modifier (`Meta` on macOS, `Control` elsewhere) into `'Mod'`.
+#### Context helpers
 
-`formatForDisplay` accepts `FormatDisplayOptions`: `platform`, `useSymbols` (boolean or `{ modifiers?, keys? }`), `parts` (returns `string[]` when `true`), `layoutMap`, `keyLabels`, and `separatorToken`.
+- `createKeyContext(init?)` constructs a `KeyContext` from `{ identifiers?, values? }`.
+- `parseKeyContext(source)` parses space-separated identifiers and `key=value` pairs (for example `'Editor mode=full extension=md'`).
+- `parseContextPredicate(source)` parses a `ContextPredicate` using `>`, `||`, `&&`, `==`, `!=`, `!`, and parentheses.
 
-## Record shortcuts
+---
 
-| Export                                             | Behavior                                                                                            |
-| -------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `HotkeyRecorder`                                   | Records a single shortcut into a TanStack Store (`isRecording`, `recordedHotkey`).                  |
-| `HotkeySequenceRecorder`                           | Records a multi-stroke sequence into a TanStack Store (`isRecording`, `steps`, `recordedSequence`). |
-| `KeyStateTracker`, `getKeyStateTracker()`          | Tracks held key names (`heldKeys`) and physical codes (`heldCodes`) on `window`.                    |
-| `matchesHeldModifiers(hotkey, heldKeys, options?)` | Returns whether held modifiers reveal a shortcut hint. Accepts `{ platform?, exact? }`.             |
+### Parsing, formatting, and matching
 
-`HotkeyRecorder`, `HotkeySequenceRecorder`, and `KeyStateTracker` all expose `.dispose()` and `[Symbol.dispose]()`. `KeyStateTracker` also provides `reset()` to clear held state when the host detects lost `keyup` events, plus `getHeldKeys()`, `isKeyHeld(key)`, `isAnyKeyHeld(keys)`, and `areAllKeysHeld(keys)`.
+#### `parseShortcut(input)`
 
-Both recorder classes support `setOptions(patch)` and `replaceOptions(options)`. Replacement requires `onRecord` and removes omitted optional callbacks and settings without stopping an active recording or discarding captured steps. Updating `idleTimeoutMs` on `HotkeySequenceRecorder` restarts its countdown. Removing `idleTimeoutMs` cancels the countdown.
+Strictly parses a string, `RawHotkey`, or stroke array into a discriminated result:
 
-## Terminals
+- `{ ok: true, value: Shortcut, warnings: readonly ShortcutError[] }`
+- `{ ok: false, errors: readonly ShortcutError[], warnings: readonly ShortcutError[] }`
 
-Import terminal helpers from `@shaulavo/hotkeys/terminal`:
+Each `ShortcutError` has `{ strokeIndex, token, message }`. `Shortcut` is a frozen branded tuple of `ValidatedStroke` objects accepted directly by registration, keymap, normalization, and display APIs.
 
-| Export                                                 | Behavior                                                                                                |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
-| `createTerminalDispatcher<Source, Commands>(options?)` | Creates a `TerminalDispatcher` wired with `terminalKeyEffects` and a `handleTerminalKey(event)` method. |
-| `keyInputFromTerminalKey(event)`                       | Converts a `TerminalKeyLike` event (legacy escapes or Kitty keyboard protocol) into a `KeyInput`.       |
-| `terminalKeyEffects`                                   | `KeyEffects<TerminalKeyLike>` calling `preventDefault` and `stopPropagation` when present.              |
+Literal `+` rules: `'+'`, `'Mod++'`, `'Control++'`, `'Ctrl+Shift++'`, and `'Mod+Plus'` parse the key `'+'`; trailing single `'+'` after a prefix (`'Mod+'`, `'Control+Shift+'`), unknown modifiers (`'Mdo+S'`), malformed brackets (`'[KeyS'`), modifier-only strokes (`'Control+Shift'`), and empty inputs fail with `ok: false`. Unknown key names return `ok: true` with non-empty `warnings`.
 
-Types exported from `@shaulavo/hotkeys/terminal`: `TerminalKeyLike`, `TerminalDispatcher`, and `TerminalDispatcherOptions`.
+#### `parseHotkey(input, platform?)`
 
-## Adapter
+Parses a string, `RawHotkey`, `ParsedHotkey`, `KeyInput`, or `KeyboardEventLike` into a resolved `ParsedHotkey` for `platform` (default `detectPlatform()`). For `KeyInput` and `KeyboardEventLike`, `parseHotkey` returns a logical `ParsedHotkey` (`code` omitted) so physical `[Code]` bindings stay distinct from logical keys.
 
-Import low-level host building blocks from `@shaulavo/hotkeys/adapter`:
+#### `normalizeHotkey(input, options?)`
 
-| Export                                         | Behavior                                                                                        |
-| ---------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `createChordRuntime(options)`                  | Stateful chord trie runtime with pending timeouts, replay, and `updateTrie` / `updateBindings`. |
-| `buildKeymapTrie(bindings, platform)`          | Compiles `KeymapBinding[]` into a lookup trie.                                                  |
-| `trieStep(node, input)`                        | Advances one stroke in a `KeymapNode`.                                                          |
-| `resolveKeymapNode(node, stack, isAvailable?)` | Ranks exact bindings at a node and counts surviving continuations.                              |
-| `evaluatePredicate(predicate, stack)`          | Tests a parsed `ContextPredicate` against a `KeyContext[]` stack.                               |
-| `predicateDepth(predicate, stack)`             | Returns the deepest matching stack index, or `null` when unmatched.                             |
-| `attachKeyListeners(...)`                      | Attaches root and capture DOM listeners with blur, hidden-tab, and pointer resets.              |
-| `browserKeyEffects`                            | Browser `KeyEffects<KeyboardEvent>` implementation.                                             |
-| `replayTextInput(input, event)`                | Restores unclaimed printable characters into text inputs and `EditContext` fields.              |
+Normalizes a shortcut, stroke, `ParsedHotkey`, `KeyInput`, or `KeyboardEventLike` to a canonical string.
 
-Types exported from `@shaulavo/hotkeys/adapter`: `KeymapBinding`, `KeymapNode`, `KeymapEdge`, `KeyEffects`, `ChordRuntime`, `ChordRuntimeOptions`, `KeymapSelection`, `KeyListenerTarget`, `KeyListeners`, and `KeyResetReason`.
+- `options?: { readonly mode?: 'symbolic' | 'resolved' | 'adaptive'; readonly platform?: Platform }`:
+  - `'symbolic'` (default): preserves `Mod`, `Control`, and `Meta` as written.
+  - `'resolved'`: resolves `Mod` for `platform` (`Meta` on macOS, `Control` on Windows and Linux).
+  - `'adaptive'`: folds the platform's primary modifier into `Mod` when the other primary modifier is absent.
 
-## React
+#### `formatForDisplay(hotkey, options?)`
 
-`@shaulavo/hotkeys/react` exports:
+Formats a single stroke, chord string, stroke array, `Shortcut`, or `ParsedHotkey` for UI display.
 
-- Provider: `HotkeysProvider`, `useHotkeysContext`, `useDefaultHotkeysOptions`
-- Registration hooks: `useHotkey`, `useHotkeys`, `useHotkeySequence`, `useHotkeySequences`, `useHotkeyRegistrations`
-- Held-key and hint hooks: `useHeldKeys`, `useHeldKeyCodes`, `useKeyHold`, `useHotkeyHint`
-- Recorder hooks: `useHotkeyRecorder`, `useHotkeySequenceRecorder`
-- Core re-exports: `formatForDisplay`, `getHotkeyRegistry`
+- `options?: FormatDisplayOptions`:
+  - `platform?: Platform` (default `detectPlatform()`).
+  - `useSymbols?: boolean | { modifiers?: boolean; keys?: boolean }` (default `true`).
+  - `parts?: boolean` (default `false`; returns `string[]` when `true`).
+  - `layoutMap?: { get: (code: string) => string | undefined }` for layout-aware physical labels.
+  - `keyLabels?: Readonly<Record<string, string>>` overrides display labels for logical keys or physical codes without changing matching.
+  - `separatorToken?: string | null` overrides the token separator (default `' '` on macOS with modifier symbols, `'+'` otherwise).
 
-`@shaulavo/hotkeys/react` does not re-export the rest of `@shaulavo/hotkeys`. Import core functions such as `createBrowserDispatcher`, `parseShortcut`, and `normalizeHotkey` directly from `@shaulavo/hotkeys`. Optional peer dependencies are `react` (`>=18`), `react-dom` (`>=18`), and `@tanstack/react-store` (`^0.11.1`).
+#### Matching and platform helpers
 
-`useHotkey(keys, callback, options?)` registers on the shared document registry for the component's lifetime and syncs `callback` and `options` on each render. `options` accepts `HotkeyOptions`, and `target` also accepts a React `RefObject<HTMLElement | null>`. Setting `enabled: false` keeps the registration in `useHotkeyRegistrations()` while suppressing triggers.
+- `matchesKeyboardEvent(event, hotkey, platform?)` returns `boolean`.
+- `matchesKeyInput(input, hotkey, platform?)` returns `boolean`.
+- `areHotkeysEqual(left, right, platform?)` compares resolved modifiers and exact logical `key` or physical `code`. Physical codes never equal logical keys.
+- `matchesHeldModifiers(hotkey, heldKeys, options?)` checks whether held modifiers reveal a shortcut hint (`options?: { platform?: Platform; exact?: boolean }`). Returns `false` when `'AltGraph'` is held.
+- `detectPlatform()` returns `'mac' | 'windows' | 'linux'` (defaults to `'linux'` when `navigator` is undefined).
+- `isModifierKey(key)` reports whether `key` is a modifier name or alias.
+- `normalizeKeyName(key)` normalizes a DOM key name to canonical form.
+- `createKeyInput(init)` and `keyInputFromKeyboardEvent(event, platform?)` build `KeyInput` values.
 
-```tsx
-useHotkey('Escape', onClose, { enabled: isOpen })
-useHotkey('Mod+S', save, { target: editorRef })
-```
+---
 
-`HotkeysProvider` accepts `defaultOptions` with keys `hotkey`, `hotkeySequence`, `hotkeyRecorder`, and `hotkeySequenceRecorder`. Because the React registration hooks use the document registry, use `createBrowserDispatcher` from `@shaulavo/hotkeys` when shortcuts depend on focus contexts.
+### Recorders and key state tracker
 
-### Option changes in React
+#### `KeyStateTracker` and `getKeyStateTracker()`
 
-Registration and recorder hooks replace their option configuration after each committed render. Provider defaults apply first, then hook or common options, then per-definition options in batches. Removing a prop exposes the lower-level default, and removing that default restores the core default.
+Singleton tracker for held keys backed by a TanStack `Store<KeyStateTrackerState>`.
 
-Updating `target` or `platform` keeps the existing registration handle and `triggerCount`. An unattached ref removes the registration until a later render attaches the element. An omitted or `null` target uses `document`. Changing the shortcut or sequence creates a new registration. Batch rows use list position and shortcut identity, so inserting or reordering rows can replace handles.
+- `KeyStateTrackerState`: `{ heldKeys: string[]; heldCodes: Record<string, string>; readonly activeCodes: readonly string[] }`.
+- `getKeyStateTracker()` and `KeyStateTracker.getInstance()` return the shared singleton, attaching capture-phase `keydown` and `keyup` listeners on `window`, `blur` on `window`, and `visibilitychange` on `document`.
+- `getHeldKeys()`, `isKeyHeld(key)` (checks `activeCodes` for bracketed `[Code]` tokens and `heldKeys` for logical keys), `isAnyKeyHeld(keys)`, `areAllKeysHeld(keys)`.
+- `reset()` clears all held entries immediately.
+- `dispose()` and `[Symbol.dispose]()` remove listeners, reset state, and clear the singleton reference.
+- `KeyStateTracker.resetInstance()` disposes and clears the singleton for tests.
 
-### Failed batch updates
+#### `HotkeyRecorder` and `HotkeySequenceRecorder`
 
-`useHotkeys` and `useHotkeySequences` plan all rows before changing live registrations. If planning or applying a row throws, the hook disposes every registration it owns, including retained handles and earlier handles from the same update, and rethrows the original error.
+Capture-phase shortcut recorders backed by a TanStack `Store`.
 
-Cleanup is scoped to the failing hook rather than an atomic registry transaction. Rows apply in order, so store subscribers observe intermediate writes and an earlier `conflictBehavior: 'replace'` removal is not undone. Unrelated registrations stay active.
+- Both accept `RecorderOptions`: `recordBy?: 'code' | 'key'` (default `'code'`), `modifierMode?: 'adaptive' | 'literal'` (default `'adaptive'`), `platform`, `detectConflicts?: boolean | HotkeyConflictOptions`, `onReject?: (rejection: RecorderRejection) => void`, plus `ignoreInputs` (default `true`), `validate`, `onRecord`, `onCancel`, `onClear`.
+- `HotkeySequenceRecorder` also accepts `commitOnEnter?: boolean` (default `true`), `commitKeys?: 'enter' | 'none'` (default `'enter'`), and `idleTimeoutMs?: number`, and exposes `commit()`.
+- Both expose `store`, `start()`, `stop()`, `cancel()`, `setOptions(patch)`, `replaceOptions(options)`, `dispose()`, and `[Symbol.dispose]()`.
 
-### Server rendering
+---
 
-All React hooks render on a server without `window` or `document`. Rendering creates no registry, held-key tracker, or DOM listeners. Registration hooks acquire the shared document registry in post-commit effects once refs attach, and Strict Mode replay leaves one live registration per binding.
+## `@shaulavo/hotkeys/react`
 
-`useHotkeyRegistrations` returns empty `hotkeys` and `sequences` arrays during server rendering and initial hydration. `useHeldKeys`, `useHeldKeyCodes`, `useKeyHold`, and `useHotkeyHint` start with no held keys and sync with browser stores after commit. Recorder hooks start idle on the server. Invoke their actions from event handlers or effects. Pass an explicit `platform` to `formatForDisplay` during server rendering so server HTML matches client hydration.
+Requires `react >=19.2.0`, `react-dom >=19.2.0`, and `@tanstack/react-store ^0.11.1`. All hooks server-render safely in Node without touching `window` or `document`.
+
+### Provider and focus tree
+
+#### `createHotkeysContext<Commands extends CommandMap = AnyCommands>()`
+
+Returns a `TypedHotkeysContext<Commands>` containing `{ HotkeysProvider, FocusScope, useFocusNode, useHotkeysDispatcher, usePendingChord }` bound to one private React context.
+
+Top-level `HotkeysProvider`, `FocusScope`, `useFocusNode`, `useHotkeysDispatcher`, and `usePendingChord` are created by calling `createHotkeysContext()` with default `AnyCommands`.
+
+#### `HotkeysProvider`
+
+Configures the focus dispatcher pipeline and the simple registry pipeline with three mutually exclusive ownership modes:
+
+1. **External dispatcher:** pass `dispatcher`. Focus hooks attach to it; the provider never disposes it.
+2. **Owned keymap:** pass `keymap` (and optional `root`, `platform`, `timeoutMs`, `capture`, `isAvailable`, `beforeKey`, `onSequence`). Creates a `BrowserDispatcher` on client mount, calls `setKeymap` when `keymap` changes without recreating focus nodes, and disposes it on unmount.
+3. **Registry-only:** pass neither `dispatcher` nor `keymap`. Supplies optional `registry` and `defaultOptions` (`{ hotkey?, hotkeyRecorder?, hotkeySequenceRecorder? }`). `useHotkeysDispatcher()` and `usePendingChord()` return `null`; `useFocusNode` and `FocusScope` throw an explicit error.
+
+Passing both `dispatcher` and `keymap` (or owned options alongside `dispatcher`) is rejected at the type level.
+
+#### `useFocusNode(options)` and `<FocusScope>`
+
+- `useFocusNode(options: UseFocusNodeOptions<Commands>)`:
+  - `options`: `{ context?, commands?, parent?, target?, enabled? }`. `parent` defaults to the nearest ancestor `<FocusScope>` (or `null` at the root).
+  - Returns `{ ref, node, dispatcher }`.
+  - When `target` is omitted, the returned callback `ref` attaches immediately on mount or remount, including detached portals, once the dispatcher and parent are ready.
+  - When `target` is supplied, the returned callback `ref` does nothing. A `RefObject` `target` resolves on the hook owner's commits, on observed DOM mutations, and before key dispatch.
+  - For synchronous `dispatcher.nodeForElement` lookup across detached remounts when the hook owner does not commit, either omit `target` and attach the returned callback `ref` to the element, or use the default `<FocusScope>` wrapper.
+  - Multiple hooks attached to the same `(element, parent)` on one dispatcher share a single element-attached focus node, merge their contexts on every capture, and manage their own handlers independently.
+- `<FocusScope>`: wraps `useFocusNode`, renders a `<div>` accepting `ref`, `id`, `className`, and `children`, and provides its `node` to descendants. When `target` is omitted, `<FocusScope>` attaches immediately to its wrapper `<div>` through the callback `ref`. When `enabled={false}`, descendants inherit the ancestor scope.
+
+##### Composed focus registrations
+
+When multiple registrations share one `(element, parent)` on one dispatcher, the shared node sorts them structurally. Deeper React focus scopes come first. Within the same scope depth, each hook instance's first committed mount order breaks ties, with earlier mounts first.
+
+Context merging and handler trials both use this structural order. On every capture, the shared node merges active contexts in that order. Identifiers combine across active registrations, and later values in the order overwrite earlier values for the same key. During dispatch, the dispatcher tries handlers for a command in that order. If a handler returns `false`, the dispatcher tries the next handler for that command. Any other return value claims the command and stops dispatch.
+
+A registration keeps its structural position when it replaces a handler, adds a command already present on the shared node, or removes and re-adds a command. That position survives when `<Activity>` hides and reveals the subtree, or when the `ref` reattaches.
+
+When `target` is omitted, `<FocusScope>` attaches its wrapper `<div>` before it invokes its forwarded `ref`, so synchronous `dispatcher.nodeForElement` lookup finds the focus node. A default `<FocusScope>` places its own registration one level deeper than its enclosing scope. Because deeper scopes come first, a hook on the enclosing owner that uses the forwarded `ref` with the same parent comes later. The hook's context values therefore overwrite matching keys from the scope, and the scope's handlers run before the hook's handlers.
+
+#### `useHotkeysDispatcher()` and `usePendingChord()`
+
+- `useHotkeysDispatcher()` returns the active `BrowserDispatcher<Commands> | null`.
+- `usePendingChord()` subscribes via `useSyncExternalStore` to `dispatcher.subscribePending` and `dispatcher.pending()`. Immediately reflects an already-pending chord on mount and returns `null` during SSR or without a dispatcher.
+
+### Registration hooks
+
+#### `useHotkeys(definitions, commonOptions?)`
+
+Registers a mixed list of single-stroke and sequence bindings against `props.registry ?? getHotkeyRegistry()`.
+
+- `UseHotkeyDefinition`: `{ id?: string; callback: HotkeyCallback; options?: UseHotkeyOptions }` combined with either `{ hotkey: HotkeyStroke | Shortcut; sequence?: never }` or `{ sequence: HotkeySequence; hotkey?: never }`.
+- Duplicate `id` values in one batch throw before mutating live registrations, rolling back cleanly on failure.
+- Reuses an active handle only when `registry`, binding identity, and `handle.isActive` all match. Reordering with a stable `id` preserves `triggerCount`; rebinding replaces the handle; swapping the provider's `registry` moves registrations to the new registry.
+- Omitting `target` or passing `target: null` binds to the active registry's own document. Passing an unresolved `RefObject` (`target.current === null`) defers registration until the ref attaches.
+
+#### `useHotkey(hotkey, callback, options?)` and `useHotkeySequence(sequence, callback, options?)`
+
+Single-binding wrappers over `useHotkeys` sharing `UseHotkeyOptions`, provider `registry`, and `defaultOptions.hotkey`.
+
+#### `useHotkeyRegistrations()`
+
+Subscribes to the active registry's `registrations` store after client commit and returns `{ hotkeys: HotkeyRegistrationView[]; sequences: HotkeyRegistrationView[] }`. Returns empty arrays during SSR.
+
+### Held state, hints, and recorders
+
+- `useHeldKeys(): string[]` returns currently held logical key names (empty during SSR).
+- `useHeldKeyCodes(): Record<string, string>` maps held logical names to their latest physical `event.code` (empty during SSR).
+- `useKeyHold(key: IndividualKey): boolean` returns whether a logical key or bracketed physical code (`'[KeyA]'`, `'[ShiftLeft]'`, `'[ShiftRight]'`) is held (`false` during SSR).
+- `useHotkeyHint(hotkey: HotkeyStroke, options?: HeldModifierOptions): boolean` memoizes parsed modifiers and returns `matchesHeldModifiers(parsed, state.heldKeys, options)` (`false` during SSR).
+- `useHotkeyRecorder(options)` returns `ReactHotkeyRecorder` (`isRecording`, `recordedHotkey`, `startRecording`, `stopRecording`, `cancelRecording`), merging `defaultOptions.hotkeyRecorder`.
+- `useHotkeySequenceRecorder(options)` returns `ReactHotkeySequenceRecorder` (`isRecording`, `steps`, `recordedSequence`, `startRecording`, `stopRecording`, `cancelRecording`, `commitRecording`), merging `defaultOptions.hotkeySequenceRecorder`.
+
+---
+
+## `@shaulavo/hotkeys/terminal`
+
+- `createTerminalDispatcher<Source extends TerminalKeyLike = TerminalKeyLike, Commands extends CommandMap = AnyCommands>(options?)` returns a `TerminalDispatcher` combining `Dispatcher<Source, Commands>` with `handleTerminalKey(event: Source): boolean`.
+- `keyInputFromTerminalKey(event: TerminalKeyLike): KeyInput` maps terminal key names, maps `meta` or `option` to `alt` and `super` to `meta`, and strips implicit `shift` on printed symbols.
+- `terminalKeyEffects: KeyEffects<TerminalKeyLike>` calls `preventDefault` and `stopPropagation` when present.
+
+---
+
+## `@shaulavo/hotkeys/adapter`
+
+Low-level exports for custom host adapters:
+
+- Trie and chords: `buildKeymapTrie`, `trieStep`, `createChordRuntime`, `resolveKeymapNode`.
+- Predicates: `evaluatePredicate`, `predicateDepth`.
+- Browser listeners: `attachKeyListeners`, `browserKeyEffects`, `replayTextInput`.
+- Types: `KeymapBinding`, `KeymapNode`, `KeymapEdge`, `KeyEffects`, `ChordRuntime`, `ChordRuntimeOptions`, `KeymapSelection`, `KeyListenerTarget`, `KeyListeners`, `KeyResetReason`.

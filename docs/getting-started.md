@@ -1,131 +1,226 @@
-# Get started
+# Getting started
 
-Install `@shaulavo/hotkeys` from npm or a [local checkout](development.md#install):
+This guide installs `@shaulavo/hotkeys`, builds a typed focus-aware React workspace, adds a shortcut settings and rebinding flow, and shows one-line registration and terminal dispatch.
 
-```sh
+## Install
+
+Install `@shaulavo/hotkeys`. Requires Node `>=24`.
+
+```bash
 bun add @shaulavo/hotkeys
 ```
 
-To use `@shaulavo/hotkeys/react`, also install `react`, `react-dom`, and `@tanstack/react-store`.
+If you use `@shaulavo/hotkeys/react`, install the optional peer dependencies (`react >=19.2.0`, `react-dom >=19.2.0`, and `@tanstack/react-store ^0.11.1`).
 
-## Route one shortcut by focus
+```bash
+bun add react react-dom @tanstack/react-store
+```
 
-In this example, `Mod+B` toggles a sidebar when the workspace has focus and toggles bold text when the editor has focus. `Mod` means Command on macOS and Control on Windows and Linux.
+## Build a typed focus-aware React workspace
 
-Run this code in a browser after `document.body` exists. It builds a focusable workspace, a textarea editor, and a sidebar, then binds a typed command map to them.
+Create a private typed context with `createHotkeysContext<Commands>()`. Pass `keymap` to `HotkeysProvider` so the provider owns a `BrowserDispatcher` lifecycle, nest `FocusScope` or `useFocusNode` for each region, and read in-progress chords with `usePendingChord()`.
 
-```ts
-import { createBrowserDispatcher } from '@shaulavo/hotkeys'
+Multiple `useFocusNode` calls attached to the same `(element, parent)` share one focus node on the dispatcher, merge their contexts dynamically, and clean up their own handlers independently.
 
-type WorkspaceCommands = {
+```tsx
+import { formatForDisplay } from '@shaulavo/hotkeys'
+import { createHotkeysContext } from '@shaulavo/hotkeys/react'
+import type { KeymapEntry } from '@shaulavo/hotkeys'
+
+type AppCommands = {
   'sidebar.toggle': void
   'text.bold': void
+  'tab.select': { index: number }
+  'editor.comment': void
 }
 
-function mountWorkspace(): () => void {
-  const workspaceElement = document.createElement('section')
-  workspaceElement.tabIndex = 0
-  workspaceElement.setAttribute('aria-label', 'Workspace')
-  const editorElement = document.createElement('textarea')
-  editorElement.setAttribute('aria-label', 'Editor')
-  editorElement.value = 'Press Mod+B here to toggle bold.'
-  const sidebarElement = document.createElement('aside')
-  sidebarElement.textContent = 'Sidebar'
-  workspaceElement.append(editorElement, sidebarElement)
-  document.body.append(workspaceElement)
+const AppHotkeys = createHotkeysContext<AppCommands>()
 
-  const keys = createBrowserDispatcher<WorkspaceCommands>({
-    root: workspaceElement,
-    keymap: [
-      { keys: 'Mod+B', command: 'sidebar.toggle', context: 'Workspace' },
-      { keys: 'Mod+B', command: 'text.bold', context: 'Editor' },
-    ],
-  })
-  const workspace = keys.createNode({
-    context: 'Workspace',
-    commands: {
-      'sidebar.toggle'() {
-        sidebarElement.hidden = !sidebarElement.hidden
-      },
-    },
-  })
-  const editor = keys.createNode({
-    parent: workspace,
+const keymap: readonly KeymapEntry<AppCommands>[] = [
+  { keys: 'Mod+B', command: 'sidebar.toggle', context: 'Workspace' },
+  { keys: 'Mod+B', command: 'text.bold', context: 'Editor' },
+  { keys: 'Mod+1', command: 'tab.select', args: { index: 0 }, context: 'Workspace' },
+  { keys: 'Mod+K Mod+C', command: 'editor.comment', context: 'Editor' },
+]
+
+function EditorPane({ onBold, onComment }: { onBold: () => void; onComment: () => void }) {
+  const { ref } = AppHotkeys.useFocusNode({
     context: 'Editor',
     commands: {
-      'text.bold'() {
-        editorElement.style.fontWeight =
-          editorElement.style.fontWeight === 'bold' ? 'normal' : 'bold'
-      },
+      'text.bold': onBold,
+      'editor.comment': onComment,
     },
   })
-  keys.attachElement(workspace, workspaceElement)
-  keys.attachElement(editor, editorElement)
-  workspaceElement.focus()
+  return <textarea ref={ref} aria-label='Editor' />
+}
 
-  return () => {
-    keys.dispose()
-    workspaceElement.remove()
+function PendingChordBadge() {
+  const pending = AppHotkeys.usePendingChord()
+  if (!pending) return null
+  return (
+    <output aria-live='polite'>
+      {formatForDisplay(pending.keys)} ({pending.candidateCount})
+    </output>
+  )
+}
+
+export function Workspace(props: {
+  onToggleSidebar: () => void
+  onSelectTab: (index: number) => void
+  onBold: () => void
+  onComment: () => void
+}) {
+  return (
+    <AppHotkeys.HotkeysProvider keymap={keymap}>
+      <AppHotkeys.FocusScope
+        context='Workspace'
+        commands={{
+          'sidebar.toggle': props.onToggleSidebar,
+          'tab.select': ({ args }) => props.onSelectTab(args.index),
+        }}
+      >
+        <EditorPane onBold={props.onBold} onComment={props.onComment} />
+        <PendingChordBadge />
+      </AppHotkeys.FocusScope>
+    </AppHotkeys.HotkeysProvider>
+  )
+}
+```
+
+To use an externally created dispatcher instead of a provider-owned keymap, pass `dispatcher={myDispatcher}` and omit `keymap`. The provider attaches focus nodes and subscribes `usePendingChord()` to your dispatcher without disposing it on unmount.
+
+## Validate, record, and rebind user shortcuts
+
+When shortcuts come from user input, settings files, or a recorder, validate them with `parseShortcut`. A successful parse narrows the string to a branded `Shortcut` accepted directly by `registerHotkey`, `useHotkey`, `useHotkeys`, `formatForDisplay`, and `KeymapEntry` with no type casts.
+
+Normalize with `normalizeHotkey` using the mode you need:
+
+- `mode: 'symbolic'` (default) preserves `Mod`, `Control`, and `Meta` as written, suited for saving preferences.
+- `mode: 'resolved'` resolves `Mod` for the target platform, suited for runtime comparison and pending-chord labels.
+- `mode: 'adaptive'` folds the platform's primary modifier into `Mod` for portable settings.
+
+In React, pass a stable `id` on each row of `useHotkeys`. Reordering rows keeps the existing registration handle and `triggerCount`. Rebinding the same `id` to new keys replaces the old handle cleanly. `useHotkeys` accepts both single-stroke `hotkey` entries and multi-stroke `sequence` entries in one list.
+
+```tsx
+import { useState } from 'react'
+import { formatForDisplay, normalizeHotkey, parseShortcut } from '@shaulavo/hotkeys'
+import { useHotkeyRecorder, useHotkeys } from '@shaulavo/hotkeys/react'
+import type { Shortcut } from '@shaulavo/hotkeys'
+
+function parseInitialShortcut(text: string): Shortcut {
+  const result = parseShortcut(text)
+  if (!result.ok) throw new Error(result.errors[0]?.message ?? 'Invalid shortcut')
+  return result.value
+}
+
+export function ShortcutSettings(props: { onSave: () => void; onJumpTop: () => void }) {
+  const [saveBinding, setSaveBinding] = useState<Shortcut>(() => parseInitialShortcut('Mod+S'))
+  const [draft, setDraft] = useState(() => normalizeHotkey(saveBinding))
+  const [error, setError] = useState<string | null>(null)
+
+  const recorder = useHotkeyRecorder({
+    modifierMode: 'adaptive',
+    detectConflicts: true,
+    onRecord: (recorded) => {
+      const parsed = parseShortcut(recorded)
+      if (!parsed.ok) return
+      setSaveBinding(parsed.value)
+      setDraft(normalizeHotkey(parsed.value))
+      setError(null)
+    },
+    onReject: (rejection) => setError(rejection.message),
+  })
+
+  useHotkeys([
+    { id: 'save', hotkey: saveBinding, callback: props.onSave },
+    { id: 'jump-top', sequence: ['G', 'G'], callback: props.onJumpTop },
+  ])
+
+  function applyDraft() {
+    const parsed = parseShortcut(draft)
+    if (!parsed.ok) {
+      setError(parsed.errors.map((item) => `${item.token}: ${item.message}`).join(', '))
+      return
+    }
+    if (parsed.warnings.length > 0) {
+      setError(parsed.warnings[0]?.message ?? 'Unknown key')
+      return
+    }
+    setSaveBinding(parsed.value)
+    setDraft(normalizeHotkey(parsed.value))
+    setError(null)
   }
-}
 
-const cleanup = mountWorkspace()
-// Call cleanup() when the view unmounts.
+  return (
+    <div>
+      <input value={draft} onChange={(event) => setDraft(event.target.value)} />
+      <button type='button' onClick={applyDraft}>
+        Apply ({formatForDisplay(saveBinding)})
+      </button>
+      <button type='button' onClick={recorder.startRecording}>
+        {recorder.isRecording ? 'Press a shortcut...' : 'Record'}
+      </button>
+      {error && <p role='alert'>{error}</p>}
+    </div>
+  )
+}
 ```
 
-Press `Mod+B` to hide or show the sidebar. Press Tab to move focus into the editor, then press `Mod+B` again to toggle bold text. Press Shift+Tab to return to the workspace.
+## Register standalone shortcuts without a focus tree
 
-The dispatcher reads the active focus path and evaluates each binding's `context` predicate against it. See [the focus tree](../packages/hotkeys/docs/concepts.md#the-focus-tree), [chords](../packages/hotkeys/docs/keymaps.md#chords), and [removing bindings](../packages/hotkeys/docs/keymaps.md#removing-bindings) for the resolution rules.
-
-## Register a single shortcut
-
-When a shortcut does not depend on a focus tree, call `registerHotkey` on the shared document registry. Keep the returned handle and call `dispose()` during teardown.
+For quick document or element shortcuts outside React, call `registerHotkey`. Dispose the returned handle when done, or scope its lifetime with `using`.
 
 ```ts
-import { registerHotkey } from '@shaulavo/hotkeys'
+import { createHotkeyRegistry, registerHotkey } from '@shaulavo/hotkeys'
 
-function mountShortcuts(onSave: () => void): () => void {
-  const save = registerHotkey('Mod+S', onSave)
-  return () => save.dispose()
-}
+const save = registerHotkey('Mod+S', (event, { shortcut, stroke }) => {
+  event.preventDefault()
+  console.log(shortcut, stroke.modifiers)
+})
 
-const cleanup = mountShortcuts(() => console.log('Save requested'))
-// Call cleanup() when the view unmounts.
+// Later, release the binding.
+save.dispose()
+
+// For an isolated document (such as an iframe) or capture-phase listening:
+const isolated = createHotkeyRegistry({ document, capture: true })
+const close = isolated.register(['G', 'Escape'], () => {})
+close.dispose()
+isolated.dispose()
 ```
 
-`HotkeyRegistration`, `HotkeyRegistry`, dispatchers, recorders, and `KeyStateTracker` also implement `Symbol.dispose` for `using` declarations.
+## Dispatch terminal keys
 
-## Validate and format user bindings
-
-User settings often arrive as unvalidated strings. Call `parseShortcut` to validate the string and narrow it to a `Shortcut` that `registerHotkey`, `normalizeHotkey`, and `formatForDisplay` accept without type casts.
+For terminal apps and TUIs, import `createTerminalDispatcher` from `@shaulavo/hotkeys/terminal`. It pairs `createDispatcher` with `keyInputFromTerminalKey` and `terminalKeyEffects`.
 
 ```ts
-import { formatForDisplay, normalizeHotkey, parseShortcut, registerHotkey } from '@shaulavo/hotkeys'
+import { createTerminalDispatcher } from '@shaulavo/hotkeys/terminal'
+import type { TerminalKeyLike } from '@shaulavo/hotkeys/terminal'
 
-function bindUserShortcut(input: string, onSave: () => void): string | null {
-  const parsed = parseShortcut(input)
-  if (!parsed.ok) return null
+type TuiCommands = { quit: void; 'pane.next': void }
 
-  const registration = registerHotkey(parsed.value, onSave)
-  const stored = normalizeHotkey(parsed.value)
-  const label = formatForDisplay(parsed.value)
-  registration.dispose()
-  return `${stored} (${label})`
+const dispatcher = createTerminalDispatcher<TerminalKeyLike, TuiCommands>({
+  platform: 'linux',
+  keymap: [
+    { keys: 'Control+Q', command: 'quit' },
+    { keys: 'Control+K N', command: 'pane.next' },
+  ],
+})
+
+const root = dispatcher.createNode({
+  commands: {
+    quit: () => {},
+    'pane.next': () => {},
+  },
+})
+root.focus()
+
+export function onTerminalKey(event: TerminalKeyLike): boolean {
+  return dispatcher.handleTerminalKey(event)
 }
-
-bindUserShortcut('Mod+S', () => console.log('Save'))
 ```
 
-`normalizeHotkey` defaults to `mode: 'symbolic'`, so literal `Control` and `Meta` keep their meaning and `Mod` stays `Mod`. Pass `{ mode: 'resolved', platform }` to resolve `Mod` for a specific platform, or `{ mode: 'adaptive', platform }` to fold a platform's primary modifier into `Mod`.
+## Next steps
 
-## Choose an entrypoint by job
-
-| Job                        | Entrypoint                   | Key APIs                                                                                       | Guide                                                                              |
-| -------------------------- | ---------------------------- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Route commands by focus    | `@shaulavo/hotkeys`          | `createBrowserDispatcher`, `createDispatcher`, `explainKeymap`                                 | [Build editor keymaps](overview.md#build-editor-keymaps)                           |
-| Register document bindings | `@shaulavo/hotkeys`          | `registerHotkey`, `createHotkeyRegistry`, `getHotkeyRegistry`                                  | [Register shortcuts](overview.md#register-shortcuts)                               |
-| Parse, validate, format    | `@shaulavo/hotkeys`          | `parseShortcut`, `parseHotkey`, `normalizeHotkey`, `formatForDisplay`, `areHotkeysEqual`       | [Parse, match, and format](../packages/hotkeys/docs/api.md#parse-match-and-format) |
-| Use React hooks            | `@shaulavo/hotkeys/react`    | `HotkeysProvider`, `useHotkey`, `useHotkeys`, `useHotkeySequence`, `useHotkeySequences`        | [React API](../packages/hotkeys/docs/api.md#react)                                 |
-| Read held keyboard state   | `@shaulavo/hotkeys/react`    | `useHeldKeys`, `useHeldKeyCodes`, `useKeyHold`, `useHotkeyHint`                                | [Read keyboard state](overview.md#read-keyboard-state)                             |
-| Handle terminal input      | `@shaulavo/hotkeys/terminal` | `createTerminalDispatcher`, `keyInputFromTerminalKey`, `terminalKeyEffects`                    | [Terminals](../packages/hotkeys/docs/keymaps.md#terminals)                         |
-| Build a custom host        | `@shaulavo/hotkeys/adapter`  | `createChordRuntime`, `buildKeymapTrie`, `trieStep`, `resolveKeymapNode`, `attachKeyListeners` | [Adapter API](../packages/hotkeys/docs/api.md#adapter)                             |
+- Read [Concepts](../packages/hotkeys/docs/concepts.md) for key resolution, `KeyStateTracker` singleton lifetime, and chord rules.
+- Read [Keymaps](../packages/hotkeys/docs/keymaps.md) for predicates, unbinding, and `dispatcher.explain()`.
+- Read the [API reference](../packages/hotkeys/docs/api.md) for every function, hook, and type.

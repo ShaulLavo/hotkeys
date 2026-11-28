@@ -7,7 +7,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useHotkey } from '../../src/react/useHotkey.js'
 import { useHotkeySequence } from '../../src/react/useHotkeySequence.js'
 import { useHotkeys } from '../../src/react/useHotkeys.js'
-import { useHotkeySequences } from '../../src/react/useHotkeySequences.js'
 import { useHotkeyRegistrations } from '../../src/react/useHotkeyRegistrations.js'
 import { useHeldKeys } from '../../src/react/useHeldKeys.js'
 import { useHeldKeyCodes } from '../../src/react/useHeldKeyCodes.js'
@@ -37,10 +36,7 @@ function useFixtureRegistrations(
   useHotkey('F9', () => onCommand('single'), options)
   useHotkeySequence(['G', 'G'], () => onCommand('sequence'), options)
   useHotkeys([{ hotkey: 'F10', callback: () => onCommand('batch-single') }], options)
-  useHotkeySequences(
-    [{ sequence: ['D', 'D'], callback: () => onCommand('batch-sequence') }],
-    options,
-  )
+  useHotkeys([{ sequence: ['D', 'D'], callback: () => onCommand('batch-sequence') }], options)
 }
 
 function useKeyboardSummary(): string {

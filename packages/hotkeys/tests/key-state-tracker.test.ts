@@ -106,7 +106,7 @@ describe('KeyStateTracker', () => {
       const tracker = KeyStateTracker.getInstance()
 
       expect(tracker.store).toBeDefined()
-      expect(tracker.store.state).toEqual({ heldKeys: [], heldCodes: {} })
+      expect(tracker.store.state).toEqual({ heldKeys: [], heldCodes: {}, activeCodes: [] })
     })
 
     it('should update store state on key changes', () => {
@@ -330,11 +330,15 @@ describe('KeyStateTracker with shortcut dispatch', () => {
 
       dispatchKey('keydown', 'F9')
       expect(callback).toHaveBeenCalledOnce()
-      expect(tracker.store.state).toEqual({ heldKeys: ['F9'], heldCodes: { F9: 'F9' } })
+      expect(tracker.store.state).toEqual({
+        heldKeys: ['F9'],
+        heldCodes: { F9: 'F9' },
+        activeCodes: ['F9'],
+      })
 
       const release = dispatchKey('keyup', 'F9')
       expect(release.defaultPrevented).toBe(true)
-      expect(tracker.store.state).toEqual({ heldKeys: [], heldCodes: {} })
+      expect(tracker.store.state).toEqual({ heldKeys: [], heldCodes: {}, activeCodes: [] })
     },
   )
 
@@ -348,11 +352,15 @@ describe('KeyStateTracker with shortcut dispatch', () => {
     const continuation = dispatchKey('keydown', 'F10')
     expect(continuation.defaultPrevented).toBe(true)
     expect(callback).toHaveBeenCalledOnce()
-    expect(tracker.store.state).toEqual({ heldKeys: ['F10'], heldCodes: { F10: 'F10' } })
+    expect(tracker.store.state).toEqual({
+      heldKeys: ['F10'],
+      heldCodes: { F10: 'F10' },
+      activeCodes: ['F10'],
+    })
 
     const release = dispatchKey('keyup', 'F10')
     expect(release.defaultPrevented).toBe(true)
-    expect(tracker.store.state).toEqual({ heldKeys: [], heldCodes: {} })
+    expect(tracker.store.state).toEqual({ heldKeys: [], heldCodes: {}, activeCodes: [] })
   })
 
   it('destroying the tracker removes its keyboard listeners while registrations keep working', () => {
@@ -372,7 +380,7 @@ describe('KeyStateTracker with shortcut dispatch', () => {
 
     expect(callback).toHaveBeenCalledOnce()
     expect(changed).not.toHaveBeenCalled()
-    expect(tracker.store.state).toEqual({ heldKeys: [], heldCodes: {} })
+    expect(tracker.store.state).toEqual({ heldKeys: [], heldCodes: {}, activeCodes: [] })
     subscription.unsubscribe()
   })
 
@@ -384,10 +392,14 @@ describe('KeyStateTracker with shortcut dispatch', () => {
 
     registry.dispose()
     registry = undefined
-    expect(tracker.store.state).toEqual({ heldKeys: ['F9'], heldCodes: { F9: 'F9' } })
+    expect(tracker.store.state).toEqual({
+      heldKeys: ['F9'],
+      heldCodes: { F9: 'F9' },
+      activeCodes: ['F9'],
+    })
 
     const release = dispatchKey('keyup', 'F9')
     expect(release.defaultPrevented).toBe(false)
-    expect(tracker.store.state).toEqual({ heldKeys: [], heldCodes: {} })
+    expect(tracker.store.state).toEqual({ heldKeys: [], heldCodes: {}, activeCodes: [] })
   })
 })

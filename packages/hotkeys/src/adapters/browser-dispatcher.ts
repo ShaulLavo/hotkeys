@@ -2,7 +2,7 @@ import type { AnyCommands, CommandMap } from '../dispatch/commands.js'
 import type { HostedFocusNode } from '../dispatch/dispatcher.js'
 import { createDispatcher } from '../dispatch/dispatcher.js'
 import { detectPlatform } from '../platform.js'
-import { isInputElement } from '../_event-target.js'
+import { isDomElement, isInputElement } from '../_event-target.js'
 import { attachKeyListeners, browserKeyEffects, replayTextInput } from './browser-listeners.js'
 import type { Dispatcher, DispatcherOptions, FocusNode } from '../dispatch/dispatcher.js'
 import type { KeyResetReason } from './browser-listeners.js'
@@ -88,7 +88,7 @@ export function createBrowserDispatcher<Commands extends CommandMap = AnyCommand
     notifyObservers((observer) => observer.beforeKey(event))
     if (!nodes.size || event.type !== 'keydown') return
     for (const target of event.composedPath()) {
-      const node = target instanceof Element ? attachedNode(target) : undefined
+      const node = isDomElement(target) ? attachedNode(target) : undefined
       if (node) return dispatcher.focus(node)
     }
     dispatcher.focus(null)
@@ -101,9 +101,29 @@ export function createBrowserDispatcher<Commands extends CommandMap = AnyCommand
     const attached = nodes.get(element) ?? new Set<ElementAttachment<Commands>>()
     nodes.set(element, attached)
     attached.add(attachment)
+    syncAttachedFocus(element)
     return () => {
       attached.delete(attachment)
       if (!attached.size && nodes.get(element) === attached) nodes.delete(element)
+    }
+  }
+  function syncAttachedFocus(element: Element) {
+    let next: FocusNode<KeyboardEvent, Commands> | undefined
+    for (
+      let active = activeElementIn(element.ownerDocument);
+      active;
+      active = composedParentElement(active)
+    ) {
+      next ??= attachedNode(active)
+      if (active === element && next) return focusIfCompatible(next)
+    }
+  }
+
+  function focusIfCompatible(next: FocusNode<KeyboardEvent, Commands>) {
+    const current = dispatcher.focused()
+    if (!current) return dispatcher.focus(next)
+    for (let ancestor: HostedFocusNode | null = next; ancestor; ancestor = ancestor.parent) {
+      if (ancestor === current) return dispatcher.focus(next)
     }
   }
   function attachedNode(element: Element) {
@@ -116,16 +136,11 @@ export function createBrowserDispatcher<Commands extends CommandMap = AnyCommand
   }
   function nodeForElement(element: Element) {
     if (disposed) return null
-    for (let current: Element | null = element; current; current = parentElement(current)) {
+    for (let current: Element | null = element; current; current = composedParentElement(current)) {
       const node = attachedNode(current)
       if (node) return node
     }
     return null
-  }
-  function parentElement(element: Element) {
-    if (element.parentElement) return element.parentElement
-    const root = element.getRootNode()
-    return root instanceof ShadowRoot ? root.host : null
   }
   function observeKeys(observer: BrowserKeyObserver) {
     if (disposed) return () => {}
@@ -153,11 +168,17 @@ export function createBrowserDispatcher<Commands extends CommandMap = AnyCommand
   function dispose() {
     if (disposed) return
     disposed = true
-    dispatcher.dispose()
-    listeners.dispose()
-    reset('dispose')
-    observers.clear()
-    nodes.clear()
+    try {
+      dispatcher.dispose()
+    } finally {
+      listeners.dispose()
+      nodes.clear()
+      try {
+        reset('dispose')
+      } finally {
+        observers.clear()
+      }
+    }
   }
   return {
     ...dispatcher,
@@ -173,4 +194,19 @@ export function createBrowserDispatcher<Commands extends CommandMap = AnyCommand
     dispose,
     [Symbol.dispose]: dispose,
   }
+}
+
+function activeElementIn(doc: Document): Element | null {
+  let active = doc.activeElement
+  while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement
+  return active
+}
+
+function composedParentElement(element: Element): Element | null {
+  if (element.assignedSlot) return element.assignedSlot
+  if (element.parentElement) return element.parentElement
+  const root = element.getRootNode()
+  // Adoption can move a shadow root into a document from another realm.
+  if (root.nodeType !== 11 || !('host' in root)) return null
+  return root.getRootNode({ composed: true }) !== root ? (root as ShadowRoot).host : null
 }

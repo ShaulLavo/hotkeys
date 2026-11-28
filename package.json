@@ -21,12 +21,12 @@
     "verify": "bun run build && bun run typecheck && bun run lint && bun run format:check && bun run test && bun run pack && bun run test:package",
     "pack": "node scripts/pack.mjs",
     "test:package": "node scripts/check-package.mjs && node scripts/check-package.mjs --bun",
-    "release:publish": "bun run build && bunx changeset publish"
+    "test:browser": "node scripts/check-packed-browser.mts"
   },
   "devDependencies": {
-    "@changesets/cli": "^2.29.8",
     "oxfmt": "0.70.0",
     "oxlint": "1.85.0",
+    "playwright": "1.65.1",
     "turbo": "2.11.5",
     "typescript": "7.0.2",
     "unknot": "0.1.2"

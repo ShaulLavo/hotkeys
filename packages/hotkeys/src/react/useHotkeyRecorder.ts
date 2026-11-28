@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
 import { useSelector } from '@tanstack/react-store'
 import { HotkeyRecorder } from '@shaulavo/hotkeys'
-import { useDefaultHotkeysOptions } from './HotkeysProvider.js'
-import { useIsomorphicLayoutEffect } from './utils.js'
+import { useRegistryOptions } from './_registry-context.js'
 import type { Hotkey, HotkeyRecorderOptions } from '@shaulavo/hotkeys'
 
 export interface ReactHotkeyRecorder {
@@ -59,14 +58,14 @@ export interface ReactHotkeyRecorder {
  */
 export function useHotkeyRecorder(options: HotkeyRecorderOptions): ReactHotkeyRecorder {
   const mergedOptions = {
-    ...useDefaultHotkeysOptions().hotkeyRecorder,
+    ...useRegistryOptions().defaultOptions?.hotkeyRecorder,
     ...options,
   }
 
   const [recorder] = useState(() => new HotkeyRecorder(mergedOptions))
 
   // Callbacks in the options must see the latest render's values.
-  useIsomorphicLayoutEffect(() => {
+  useLayoutEffect(() => {
     recorder.replaceOptions(mergedOptions)
   })
 

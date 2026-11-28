@@ -13,6 +13,7 @@ const build = await Bun.build({
   outdir,
   target: 'browser',
   format: 'esm',
+  jsx: { runtime: 'automatic', development: false },
   sourcemap: 'linked',
   packages: 'external',
   splitting: true,

@@ -6,7 +6,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useHotkey } from '../../src/react/useHotkey.js'
 import { useHotkeySequence } from '../../src/react/useHotkeySequence.js'
 import { useHotkeys } from '../../src/react/useHotkeys.js'
-import { useHotkeySequences } from '../../src/react/useHotkeySequences.js'
 import { useHotkeyRegistrations } from '../../src/react/useHotkeyRegistrations.js'
 import { useHeldKeys } from '../../src/react/useHeldKeys.js'
 import { useHeldKeyCodes } from '../../src/react/useHeldKeyCodes.js'
@@ -42,9 +41,9 @@ const registrationComponents = [
     },
   },
   {
-    name: 'useHotkeySequences',
+    name: 'useHotkeys',
     Component: function BatchSequences() {
-      useHotkeySequences([{ sequence: ['D', 'D'], callback: () => {} }])
+      useHotkeys([{ sequence: ['D', 'D'], callback: () => {} }])
       return null
     },
   },

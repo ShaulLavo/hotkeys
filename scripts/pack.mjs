@@ -13,7 +13,7 @@ assert.match(revision, /^[a-f0-9]{40}$/)
 const source = join(root, 'packages/hotkeys')
 const manifest = JSON.parse(await readFile(join(source, 'package.json'), 'utf8'))
 const file = `shaulavo-hotkeys-${manifest.version}.tgz`
-const temporary = await mkdtemp(join(tmpdir(), 'hotkeys-pack-'))
+const temporary = await mkdtemp(join(process.env.RUNNER_TEMP ?? tmpdir(), 'hotkeys-pack-'))
 
 try {
   await rm(output, { recursive: true, force: true })
@@ -40,7 +40,7 @@ try {
     )
   }
   await writeFile(join(stage, 'package.json'), JSON.stringify(packedManifest, null, 2) + '\n')
-  execFileSync('bun', ['pm', 'pack', '--ignore-scripts', '--filename', join(output, file)], {
+  execFileSync('npm', ['pack', '--ignore-scripts', '--pack-destination', output], {
     cwd: stage,
     stdio: 'inherit',
   })

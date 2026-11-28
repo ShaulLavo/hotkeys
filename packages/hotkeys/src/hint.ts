@@ -1,7 +1,7 @@
 import { MODIFIER_KEYS, normalizeKeyName } from './constants.js'
-import { parseRegisterableHotkey } from './parse.js'
+import { parseHotkey } from './parse.js'
 import type { CanonicalModifier } from './key.types.js'
-import type { RegisterableHotkey } from './hotkey.types.js'
+import type { HotkeyStroke, ParsedHotkey } from './hotkey.types.js'
 
 export interface HeldModifierOptions {
   /** Resolve Mod for this platform. Defaults to platform detection. */
@@ -21,7 +21,7 @@ export interface HeldModifierOptions {
  * matchesHeldModifiers('Alt+Shift+[KeyK]', ['Alt', 'Control']) // false
  */
 export function matchesHeldModifiers(
-  hotkey: RegisterableHotkey,
+  hotkey: HotkeyStroke | ParsedHotkey,
   heldKeys: ReadonlyArray<string>,
   options: HeldModifierOptions = {},
 ): boolean {
@@ -31,7 +31,10 @@ export function matchesHeldModifiers(
   const held = Array.from(
     new Set(heldKeys.map(normalizeKeyName).filter((key) => MODIFIER_KEYS.has(key))),
   )
-  const { modifiers } = parseRegisterableHotkey(hotkey, options.platform)
+  const { modifiers } =
+    typeof hotkey !== 'string' && 'modifiers' in hotkey
+      ? hotkey
+      : parseHotkey(hotkey, options.platform)
   return (
     held.length > 0 &&
     held.every((key) => modifiers.includes(key as CanonicalModifier)) &&

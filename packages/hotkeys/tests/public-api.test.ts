@@ -1,9 +1,11 @@
 import coreSource from '../src/index.ts?raw'
 import adapterSource from '../src/adapter/index.ts?raw'
+import reactSource from '../src/react/index.ts?raw'
 import terminalSource from '../src/terminal/index.ts?raw'
 import { expect, it } from 'vitest'
 import * as hotkeys from '../src/index.js'
 import * as adapter from '../src/adapter/index.js'
+import * as react from '../src/react/index.js'
 import * as terminal from '../src/terminal/index.js'
 
 it.each([
@@ -40,6 +42,29 @@ it.each([
       'parseKeyContext',
       'parseShortcut',
       'registerHotkey',
+    ],
+  ],
+  [
+    'react/index',
+    react,
+    reactSource,
+    [
+      'createHotkeysContext',
+      'HotkeysProvider',
+      'FocusScope',
+      'useFocusNode',
+      'useHotkeysDispatcher',
+      'usePendingChord',
+      'useHotkey',
+      'useHotkeySequence',
+      'useHotkeys',
+      'useHotkeyRegistrations',
+      'useHeldKeys',
+      'useHeldKeyCodes',
+      'useKeyHold',
+      'useHotkeyHint',
+      'useHotkeyRecorder',
+      'useHotkeySequenceRecorder',
     ],
   ],
   [

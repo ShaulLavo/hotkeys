@@ -1,12 +1,7 @@
 import { afterEach, expect, test } from 'vitest'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { getHotkeyRegistry } from '../../src/index.js'
-import {
-  useHotkey,
-  useHotkeys,
-  useHotkeySequence,
-  useHotkeySequences,
-} from '../../src/react/index.js'
+import { useHotkey, useHotkeys, useHotkeySequence } from '../../src/react/index.js'
 
 afterEach(() => {
   cleanup()
@@ -38,7 +33,7 @@ test('single and batch hooks share shifted-glyph matching for shortcuts and sequ
     useHotkeySequence(['G', '?'], (event) => void received.push({ name: 'sequence', event }), {
       platform: 'linux',
     })
-    useHotkeySequences(
+    useHotkeys(
       [
         {
           sequence: ['H', 'Control++'],

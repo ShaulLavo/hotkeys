@@ -1,72 +1,81 @@
-# Development and releases
+# Development
 
-## Prerequisites
+This repository uses Bun workspaces (`bun@1.4.4`), Node `>=24`, Turborepo, Vitest, Oxlint, Oxfmt, Unknot, and Playwright.
 
-Install Bun 1.4.4 and Node 24 or newer for local development and CI. The published `packages/hotkeys/package.json` currently declares `engines.node` as `>=20`.
+## Workspace commands
 
-Run the full verification suite from the repository root:
+Run these scripts from the repository root:
 
-```sh
-bun install --frozen-lockfile
-bun run verify
+| Command                | What it runs                                                                                                                                                                                             |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bun run build`        | Builds `@shaulavo/hotkeys` (`packages/hotkeys/scripts/build.ts` + `tsc -p tsconfig.build.json`).                                                                                                         |
+| `bun run typecheck`    | Typechecks packages and runs `bun run docs:check`.                                                                                                                                                       |
+| `bun run docs:check`   | Runs `bun scripts/check-samples.mjs`, typechecking every `ts` and `tsx` block in `README.md`, `packages/hotkeys/README.md`, `docs/overview.md`, and `docs/getting-started.md` against the built package. |
+| `bun run lint`         | Runs `bun scripts/check-source-language.ts`, `oxlint .`, and `unknot packages/hotkeys/src`.                                                                                                              |
+| `bun run format`       | Formats files in place with `oxfmt --write .`.                                                                                                                                                           |
+| `bun run format:check` | Checks formatting with `oxfmt --check .`.                                                                                                                                                                |
+| `bun run test`         | Runs Vitest across workspaces.                                                                                                                                                                           |
+| `bun run pack`         | Runs `node scripts/pack.mjs` to create the release tarball, `release/manifest.json`, and `release/SHA256SUMS`.                                                                                           |
+| `bun run test:package` | Runs `node scripts/check-package.mjs` and `node scripts/check-package.mjs --bun` against the packed tarball.                                                                                             |
+| `bun run test:browser` | Runs `node scripts/check-packed-browser.mts` in Chromium against the packed tarball and `react@19.2.0`.                                                                                                  |
+| `bun run verify`       | Runs `build`, `typecheck`, `lint`, `format:check`, `test`, `pack`, and `test:package` in order.                                                                                                          |
+
+Run `bun run verify` and `bun run test:browser` before opening or merging a release-ready pull request.
+
+## Benchmarks
+
+Run the benchmarks from `packages/hotkeys`:
+
+```bash
+cd packages/hotkeys
+bun bench/lookup.ts
+bun bench/registry.ts
 ```
 
-`bun run verify` runs these steps in order:
-
-1. `bun run build` compiles `@shaulavo/hotkeys` and its four entrypoints (`.`, `./react`, `./terminal`, `./adapter`) through Turbo and emits `.d.ts` files and linked `.js.map` source maps with embedded TypeScript and TSX source text.
-2. `bun run typecheck` checks package types and runs `bun run docs:check` (`scripts/check-samples.mjs`) to compile every `ts` and `tsx` snippet in `README.md`, `packages/hotkeys/README.md`, `docs/overview.md`, and `docs/getting-started.md` against the built package.
-3. `bun run lint` runs `scripts/check-source-language.ts` and `oxlint .`.
-4. `bun run format:check` runs `oxfmt --check .`.
-5. `bun run test` runs the Vitest suite in `packages/hotkeys`.
-6. `bun run pack` builds a tarball in `release/` along with `manifest.json` and `SHA256SUMS`.
-7. `bun run test:package` installs that tarball with npm and Bun into separate fresh directories outside the workspace and verifies exports, server rendering of the React hooks without a DOM, declarations, and source maps.
-
-Keep the Vitest patches in `patches/` committed. Browser tests run under happy-dom, and React server-rendering tests run in Node without browser globals.
-
-## Install
-
-Install `@shaulavo/hotkeys` from npm:
-
-```sh
-bun add @shaulavo/hotkeys
-```
-
-For npm, run `npm install @shaulavo/hotkeys`.
-
-If your app imports `@shaulavo/hotkeys/react`, also install its optional peer dependencies: `react` (18 or newer), `react-dom` (18 or newer), and `@tanstack/react-store` (`^0.11.1`). All four subpaths ship inside `@shaulavo/hotkeys`, so consumers install one package and share one core instance automatically.
-
-## Work on a local checkout
-
-To test uncommitted changes from another project:
-
-1. Build this repository with `bun run build`.
-2. In the consuming project's `package.json`, point `@shaulavo/hotkeys` at `file:/absolute/path/to/hotkeys/packages/hotkeys`.
-3. Run `bun install` in the consuming project and rerun `bun run build` here after edits.
-4. Restore the published version before opening a PR in the consuming project.
-
-To test the exact packed artifact locally, run `bun run pack` and install `file:/absolute/path/to/hotkeys/release/shaulavo-hotkeys-<version>.tgz`. Each build embeds TypeScript and TSX source text in its `.js.map` files so debuggers show original source without a checkout.
-
-## Prepare a release
-
-Leave package versions unchanged in feature PRs. Add a changeset with `bunx changeset` when a change should appear in the next release.
-
-On every push to `main`, `.github/workflows/release.yml` runs `bun install --frozen-lockfile` and `bun run verify`, then runs `changesets/action`:
-
-- When pending changesets exist, the workflow opens or updates a release pull request using `bunx changeset version && bun install --lockfile-only`.
-- When that release pull request merges to `main`, the workflow runs `bun run release:publish` to publish `@shaulavo/hotkeys` to npm with provenance and creates a GitHub Release.
-
-`bun run pack` creates local verification tarballs in the ignored `release/` directory and never publishes.
-
-## Contribute
-
-Keep `README.md` and `packages/hotkeys/README.md` at 30 lines or fewer, and place detailed guides in `docs/` or `packages/hotkeys/docs/`. Retain MIT attribution and the TanStack Hotkeys notice. Run the narrowest relevant checks while editing, then run `bun run verify` before requesting review.
+See [Performance](../packages/hotkeys/docs/performance.md) for what each script measures and current reference runs.
 
 ## Script language
 
-Write all new scripts and test fixtures in TypeScript. `bun run lint` runs `scripts/check-source-language.ts`, which rejects `.js`, `.mjs`, and `.cjs` files outside three legacy runners:
+Handwritten code in this repository uses TypeScript, enforced by `scripts/check-source-language.ts`. Three existing Node runners remain in an allowlist until converted to TypeScript:
 
-- `scripts/check-package.mjs`
-- `scripts/check-samples.mjs`
-- `scripts/pack.mjs`
+- `scripts/check-package.mjs`: installed-consumer verification runner (npm and Bun).
+- `scripts/check-samples.mjs`: documentation-sample typecheck runner.
+- `scripts/pack.mjs`: release tarball staging and checksum runner.
 
-Converting each runner to TypeScript and removing its exception from `scripts/check-source-language.ts` remains open cleanup work. Temporary JavaScript generated during package-consumer tests stays outside the repository.
+Do not add new `.js`, `.mjs`, or `.cjs` source files.
+
+## CI checks
+
+`.github/workflows/ci.yml` runs on pull requests (`opened`, `synchronize`, `reopened`, `ready_for_review`), `workflow_dispatch`, and `workflow_call`:
+
+1. Rejects draft pull requests.
+2. Installs Bun from `package.json` and Node `24`.
+3. Runs `bun install --frozen-lockfile`.
+4. Runs `bun run verify`.
+5. Installs Chromium (`bunx --no-install playwright install --with-deps --only-shell chromium`) and runs `bun run test:browser`.
+
+## Verified-tarball publishing
+
+Releases publish the exact tarball bytes produced and verified in CI, with npm provenance enabled.
+
+### How `scripts/pack.mjs` stages the tarball
+
+`bun run pack` builds `release/shaulavo-hotkeys-<version>.tgz` from `packages/hotkeys` as follows:
+
+1. Reads `git rev-parse HEAD` as `revision` and `packages/hotkeys/package.json` for `version` and `files` (`dist`, `docs`, `LICENSE`, `README.md`).
+2. Copies those entries into a clean staging directory along with `docs/assets` into `docs/assets`.
+3. Rewrites `../../../docs/assets/` to `assets/` in staged `docs/concepts.md` and `../src/index.ts` to `https://github.com/ShaulLavo/hotkeys/blob/<revision>/packages/hotkeys/src/index.ts` in staged `docs/api.md`.
+4. Strips `devDependencies` and `scripts` from the staged `package.json` and asserts that `dependencies` contain no `workspace:`, `catalog:`, `file:`, or `link:` specifiers.
+5. Packs the staged directory with `npm pack --ignore-scripts --pack-destination release`.
+6. Computes the tarball's SHA-256 digest and writes `release/manifest.json` (`{ revision, artifacts }`) and `release/SHA256SUMS`.
+
+### How `.github/workflows/release.yml` publishes
+
+The release workflow triggers on pushes to `main` that change `packages/hotkeys/package.json` or `.github/workflows/release.yml`, or via `workflow_dispatch`:
+
+1. Queries `https://registry.npmjs.org/@shaulavo%2fhotkeys/<version>`. HTTP `200` skips publishing; HTTP `404` proceeds; any other status fails the job.
+2. Runs `bun install --frozen-lockfile`, `bun run verify` (which creates and verifies `release/`), installs Chromium, and runs `bun run test:browser` against that exact tarball (re-verifying its SHA-256 before and after).
+3. Uploads `release/` as the `hotkeys-npm-<sha>` workflow artifact.
+4. Enters `release/`, runs `sha256sum --check SHA256SUMS`, verifies `manifest.json`'s `revision` equals `$GITHUB_SHA`, and publishes the exact tarball with `npm publish "./$tarball" --access public --provenance`.
+
+To cut a release, bump `version` in `packages/hotkeys/package.json` in a reviewed pull request and merge to `main`.
