@@ -1381,3 +1381,55 @@ it('orders same-depth registrations by first committed mount even when refs atta
   expect(firstCommand).toHaveBeenCalledOnce()
   expect(secondCommand).not.toHaveBeenCalled()
 })
+
+it.each([false, true])(
+  'keeps programmatic dispatch working after an inline ref reattaches with intervening focus %s',
+  (intervene) => {
+    using dispatcher = createBrowserDispatcher()
+    const localCommand = vi.fn()
+    const otherCommand = vi.fn()
+    const other = dispatcher.createNode({ commands: { go: otherCommand } })
+    let switchDuringCleanup = false
+
+    function Owner({ version }: { version: number }) {
+      const { ref } = useFocusNode({ commands: { go: localCommand } })
+      return (
+        <button
+          data-version={version}
+          ref={(element) => {
+            const cleanup = ref(element)
+            if (typeof cleanup !== 'function') return
+            return () => {
+              cleanup()
+              if (switchDuringCleanup) dispatcher.focus(other)
+            }
+          }}
+        >
+          Target
+        </button>
+      )
+    }
+
+    const app = (version: number) => (
+      <HotkeysProvider dispatcher={dispatcher}>
+        <Owner version={version} />
+      </HotkeysProvider>
+    )
+    const view = render(app(1))
+    const target = view.getByRole('button')
+    target.focus()
+    press(target, 'F8', { code: 'F8' })
+    const previous = dispatcher.nodeForElement(target)
+    expect(previous).not.toBeNull()
+    expect(dispatcher.focused()).toBe(previous)
+
+    switchDuringCleanup = intervene
+    view.rerender(app(2))
+    expect(document.activeElement).toBe(target)
+    expect(dispatcher.nodeForElement(target)).toBe(previous)
+    expect(dispatcher.focused()).toBe(intervene ? other : previous)
+    expect(dispatcher.dispatchCommand('go')).toBe(true)
+    expect(localCommand).toHaveBeenCalledTimes(intervene ? 0 : 1)
+    expect(otherCommand).toHaveBeenCalledTimes(intervene ? 1 : 0)
+  },
+)

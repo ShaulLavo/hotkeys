@@ -101,9 +101,21 @@ export function createBrowserDispatcher<Commands extends CommandMap = AnyCommand
     const attached = nodes.get(element) ?? new Set<ElementAttachment<Commands>>()
     nodes.set(element, attached)
     attached.add(attachment)
+    syncAttachedFocus(element)
     return () => {
       attached.delete(attachment)
       if (!attached.size && nodes.get(element) === attached) nodes.delete(element)
+    }
+  }
+  function syncAttachedFocus(element: Element) {
+    const active = element.ownerDocument.activeElement
+    if (!active || !element.contains(active)) return
+    const next = nodeForElement(active)
+    if (!next) return
+    const current = dispatcher.focused()
+    if (!current) return dispatcher.focus(next)
+    for (let ancestor: HostedFocusNode | null = next; ancestor; ancestor = ancestor.parent) {
+      if (ancestor === current) return dispatcher.focus(next)
     }
   }
   function attachedNode(element: Element) {
