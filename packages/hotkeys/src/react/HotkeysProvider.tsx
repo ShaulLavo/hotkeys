@@ -89,10 +89,16 @@ type FocusContext<Commands extends CommandMap> = {
   readonly dispatcher: BrowserDispatcher<Commands> | null
   readonly configured: boolean
 }
-type ParentScope<Commands extends CommandMap> = {
-  readonly node: Node<Commands> | null
-  readonly ready: boolean
+type CommitStore<Value> = {
+  readonly read: () => Value | null
+  readonly write: (value: Value | null) => void
+  readonly subscribe: (listener: () => void) => () => void
 }
+
+type ParentScope<Commands extends CommandMap> = Pick<
+  CommitStore<BoundNode<Commands>>,
+  'read' | 'subscribe'
+>
 
 const noPending = () => null
 const noSubscribe = () => () => {}
@@ -104,7 +110,7 @@ export function createHotkeysContext<
     dispatcher: null,
     configured: false,
   })
-  const ParentContext = createContext<ParentScope<Commands>>({ node: null, ready: true })
+  const ParentContext = createContext<ParentScope<Commands> | null>(null)
 
   function HotkeysProvider(props: HotkeysProviderProps<Commands>) {
     const owned = useOwnedDispatcher(props)
@@ -118,7 +124,7 @@ export function createHotkeysContext<
     return (
       <RegistryContext value={simple}>
         <DispatcherContext value={focus}>
-          <ParentContext value={rootScope}>{props.children}</ParentContext>
+          <ParentContext value={null}>{props.children}</ParentContext>
         </DispatcherContext>
       </RegistryContext>
     )
@@ -137,21 +143,22 @@ export function createHotkeysContext<
     )
   }
 
-  function useFocusNode(options: UseFocusNodeOptions<Commands>) {
+  function useScopedNode(options: UseFocusNodeOptions<Commands>) {
     const { dispatcher, configured } = useContext(DispatcherContext)
     const scope = useContext(ParentContext)
-    const parent = options.parent === undefined ? scope.node : options.parent
-    const ready = options.parent !== undefined || scope.ready
-    const result = useNodeAttachment(dispatcher, parent, configured && ready, options)
+    const attachment = useNodeAttachment(dispatcher, scope, options)
     if (!configured)
       throw new Error('useFocusNode requires a HotkeysProvider with a dispatcher or keymap')
-    return result
+    return attachment
+  }
+
+  function useFocusNode(options: UseFocusNodeOptions<Commands>) {
+    return useScopedNode(options).result
   }
 
   function FocusScope({ children, ref, id, className, ...options }: FocusScopeProps<Commands>) {
     const ancestor = useContext(ParentContext)
-    const focus = useFocusNode(options)
-    const scope = useMemo(() => ({ node: focus.node, ready: focus.node !== null }), [focus.node])
+    const { result: focus, scope } = useScopedNode(options)
     const { ref: bindFocus } = focus
     const bind = useCallback(
       (element: HTMLDivElement | null) => {
@@ -184,8 +191,6 @@ export function createHotkeysContext<
   return { HotkeysProvider, FocusScope, useFocusNode, useHotkeysDispatcher, usePendingChord }
 }
 
-const rootScope = { node: null, ready: true } as const
-
 function useOwnedDispatcher<Commands extends CommandMap>(props: HotkeysProviderProps<Commands>) {
   const { keymap, root, platform, timeoutMs, capture } = props
   const enabled = keymap !== undefined
@@ -205,7 +210,7 @@ function useOwnedDispatcher<Commands extends CommandMap>(props: HotkeysProviderP
   const onSequence = useEffectEvent<NonNullable<OwnedOptions<Commands>['onSequence']>>((event) =>
     props.onSequence?.(event),
   )
-  const [owned, publishOwned] = useCommitSnapshot<BrowserDispatcher<Commands>>()
+  const [owned, { write: publishOwned }] = useCommitSnapshot<BrowserDispatcher<Commands>>()
   const installedKeymap = useRef<readonly KeymapEntry<Commands>[] | undefined>(undefined)
 
   useLayoutEffect(() => {
@@ -244,131 +249,143 @@ type BoundNode<Commands extends CommandMap> = {
   readonly explicit: boolean
 }
 
+type FocusOptions<Commands extends CommandMap> = {
+  readonly context: FocusContextReader | undefined
+  readonly commands: FocusCommands<Commands> | undefined
+}
+
 function useNodeAttachment<Commands extends CommandMap>(
   dispatcher: BrowserDispatcher<Commands> | null,
-  parent: Node<Commands> | null,
-  ready: boolean,
-  { context, commands, target, enabled = true }: UseFocusNodeOptions<Commands>,
-): UseFocusNodeResult<Commands> {
-  const bound = useRef<BoundNode<Commands> | null>(null)
-  const pendingDetach = useRef<BoundNode<Commands> | null>(null)
-  const [snapshot, publishNode] = useCommitSnapshot<BoundNode<Commands>>()
-  const canAttach = enabled && ready && dispatcher !== null
-  const usesExplicitTarget = target !== undefined
+  scope: ParentScope<Commands> | null,
+  { context, commands, parent, target, enabled = true }: UseFocusNodeOptions<Commands>,
+): { readonly result: UseFocusNodeResult<Commands>; readonly scope: ParentScope<Commands> } {
+  const [snapshot, binding] = useCommitSnapshot<BoundNode<Commands>>()
+  const attachedRef = useRef<{ readonly element: Element } | null>(null)
+  const canAttach = enabled && dispatcher !== null
+  const explicit = target !== undefined
   const targetRef = target && 'current' in target ? target : null
+  const inherited = parent === undefined ? scope : null
 
   const release = useCallback(() => {
-    const current = bound.current
+    const current = binding.read()
     if (!current) return
-    bound.current = null
-    pendingDetach.current = null
     current.attachment.detach()
-    publishNode(null)
-  }, [publishNode])
+    binding.write(null)
+  }, [binding])
 
-  const detachRef = useCallback(
-    (current: BoundNode<Commands>) => {
-      if (current.explicit || bound.current !== current) return
-      pendingDetach.current = current
-      // A composed ref may detach and reattach the same element in one commit.
-      queueMicrotask(() => {
-        if (pendingDetach.current === current) release()
-      })
-    },
-    [release],
-  )
-
-  const attach = useCallback(
-    (element: Element, explicit: boolean) => {
-      if (!canAttach || !dispatcher) return
-      const current = bound.current
+  const connect = useCallback(
+    (element: Element | null, latest?: FocusOptions<Commands>) => {
+      const nodeParent = inheritedParent(inherited, dispatcher, parent)
+      if (!canAttach || !dispatcher || !element || nodeParent === undefined) {
+        release()
+        return
+      }
+      const current = binding.read()
       if (
         current?.element === element &&
-        current.parent === parent &&
+        current.parent === nodeParent &&
         current.dispatcher === dispatcher &&
         current.explicit === explicit
       ) {
-        pendingDetach.current = null
-        return () => detachRef(current)
+        if (latest) current.attachment.sync(latest.context, latest.commands)
+        return
       }
-      release()
-      const attachment = attachFocusNode(dispatcher, element, parent)
-      const next = { dispatcher, parent, element, attachment, explicit }
-      bound.current = next
-      publishNode(next)
-      return () => detachRef(next)
+      const attachment = attachFocusNode(dispatcher, element, nodeParent)
+      if (latest) attachment.sync(latest.context, latest.commands)
+      current?.attachment.detach()
+      binding.write({ dispatcher, parent: nodeParent, element, attachment, explicit })
     },
-    [canAttach, detachRef, dispatcher, parent, publishNode, release],
+    [binding, canAttach, dispatcher, explicit, inherited, parent, release],
+  )
+
+  const detachRef = useCallback(
+    (entry: { readonly element: Element }) => {
+      // A composed ref may detach and reattach the same element in one commit.
+      queueMicrotask(() => {
+        if (attachedRef.current !== entry) return
+        attachedRef.current = null
+        if (binding.read()?.explicit === false) release()
+      })
+    },
+    [binding, release],
   )
 
   const ref = useCallback(
     (element: Element | null) => {
-      if (usesExplicitTarget) return
-      if (element) return attach(element, false)
-      if (bound.current) detachRef(bound.current)
-      return undefined
+      if (explicit) return
+      if (!element) {
+        if (attachedRef.current) detachRef(attachedRef.current)
+        return
+      }
+      const entry = { element }
+      attachedRef.current = entry
+      connect(element)
+      return () => detachRef(entry)
     },
-    [attach, detachRef, usesExplicitTarget],
+    [connect, detachRef, explicit],
   )
 
   const commitAttachment = useEffectEvent(() => {
-    if (target !== undefined) {
-      const element = target && 'current' in target ? target.current : target
-      const current = bound.current
-      if (!canAttach || !element) release()
-      else if (
-        current?.element !== element ||
-        current.dispatcher !== dispatcher ||
-        current.parent !== parent
-      )
-        attach(element, true)
-    } else if (bound.current?.explicit) {
-      release()
-    }
-    bound.current?.attachment.sync(context, commands)
+    const element =
+      target === undefined ? (attachedRef.current?.element ?? null) : readTarget(target)
+    connect(element, { context, commands })
   })
-
   useLayoutEffect(() => {
     commitAttachment()
   })
   useLayoutEffect(() => {
+    // A target move can change the parent's node during key processing, before React renders.
+    return inherited?.subscribe(() => commitAttachment())
+  }, [inherited])
+  useLayoutEffect(() => {
     if (!canAttach || !targetRef || !dispatcher) return
-    const stopObserving = observeTargetRef(targetRef, () => commitAttachment())
-    // React can move an object ref between mounted elements without a DOM mutation.
-    const stopListening = dispatcher.observeKeys({
-      beforeKey: () => {
-        if (targetRef.current !== (bound.current?.element ?? null)) commitAttachment()
-      },
-    })
+    const targetObserver = observeTargetRef(targetRef, () => commitAttachment())
+    const stopListening = dispatcher.observeKeys({ beforeKey: targetObserver.refresh })
     return () => {
       stopListening()
-      stopObserving()
+      targetObserver.dispose()
     }
   }, [canAttach, dispatcher, targetRef])
   useLayoutEffect(() => () => release(), [release])
 
-  const current = canAttach && snapshot?.dispatcher === dispatcher && snapshot.parent === parent
-  return { ref, node: current ? snapshot.attachment.node : null, dispatcher }
+  const node = canAttach && snapshot?.dispatcher === dispatcher ? snapshot.attachment.node : null
+  return { result: { ref, node, dispatcher }, scope: binding }
+}
+
+function inheritedParent<Commands extends CommandMap>(
+  scope: ParentScope<Commands> | null,
+  dispatcher: BrowserDispatcher<Commands> | null,
+  explicitParent: Node<Commands> | null | undefined,
+): Node<Commands> | null | undefined {
+  if (!scope) return explicitParent ?? null
+  const binding = scope.read()
+  return binding?.dispatcher === dispatcher ? binding.attachment.node : undefined
+}
+
+function readTarget(target: Exclude<UseFocusNodeOptions['target'], undefined>): Element | null {
+  return target && 'current' in target ? target.current : target
 }
 
 function useCommitSnapshot<Value>() {
-  const [store] = useState(() => {
+  const [store] = useState<CommitStore<Value>>(() => {
     let current: Value | null = null
     const listeners = new Set<() => void>()
     return {
       read: () => current,
-      write: (value: Value | null) => {
+      write: (value) => {
         if (Object.is(value, current)) return
         current = value
-        for (const listener of listeners) listener()
+        for (const listener of Array.from(listeners)) {
+          if (listeners.has(listener)) listener()
+        }
       },
-      subscribe: (listener: () => void) => {
+      subscribe: (listener) => {
         listeners.add(listener)
         return () => void listeners.delete(listener)
       },
     }
   })
-  return [useSyncExternalStore(store.subscribe, store.read, noPending), store.write] as const
+  return [useSyncExternalStore(store.subscribe, store.read, noPending), store] as const
 }
 
 function attachRef<T>(ref: Ref<T> | undefined, element: T | null): () => void {

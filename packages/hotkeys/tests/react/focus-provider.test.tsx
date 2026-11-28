@@ -433,7 +433,7 @@ it('routes a ref moved between existing elements before the next key', () => {
   expect(dispatcher.nodeForElement(first)).toBeNull()
 })
 
-it('finds an initially empty ref attached inside a shadow root before dispatch', () => {
+it('observes a shadow target after finding it during dispatch', async () => {
   using dispatcher = createBrowserDispatcher({ keymap: [{ keys: 'F8', command: 'go' }] })
   const command = vi.fn()
   const host = document.body.appendChild(document.createElement('div'))
@@ -442,7 +442,7 @@ it('finds an initially empty ref attached inside a shadow root before dispatch',
     const [shown, setShown] = useState(false)
     return (
       <>
-        <button onClick={() => setShown(true)}>Show</button>
+        <button onClick={() => setShown((value) => !value)}>Show</button>
         {shown && createPortal(<button ref={target}>Target</button>, shadow)}
       </>
     )
@@ -462,9 +462,59 @@ it('finds an initially empty ref attached inside a shadow root before dispatch',
     const button = shadow.querySelector('button')!
     press(button, 'F8', { code: 'F8', composed: true })
     expect(command).toHaveBeenCalledOnce()
+    fireEvent.click(view.getByRole('button', { name: 'Show' }))
+    await waitFor(() => expect(dispatcher.nodeForElement(button)).toBeNull())
     view.unmount()
-    expect(dispatcher.nodeForElement(button)).toBeNull()
   } finally {
     host.remove()
   }
+})
+
+it('updates nested attachments before the first key after their parent ref moves', () => {
+  using dispatcher = createBrowserDispatcher({
+    keymap: [{ keys: 'F8', command: 'go', context: 'Outer > Inner' }],
+  })
+  const command = vi.fn()
+  function Surfaces({
+    target,
+    children,
+  }: {
+    target: React.RefObject<HTMLDivElement | null>
+    children: React.ReactNode
+  }) {
+    const [second, setSecond] = useState(false)
+    return (
+      <>
+        <button onClick={() => setSecond(true)}>Move scope</button>
+        <div ref={second ? null : target}>First surface</div>
+        <div ref={second ? target : null}>Second surface</div>
+        {children}
+      </>
+    )
+  }
+  function Owner() {
+    const target = useRef<HTMLDivElement>(null)
+    return (
+      <FocusScope context='Outer' target={target}>
+        <Surfaces target={target}>
+          <FocusScope context='Inner' commands={{ go: command }}>
+            <button>Nested</button>
+          </FocusScope>
+        </Surfaces>
+      </FocusScope>
+    )
+  }
+  const view = render(
+    <HotkeysProvider dispatcher={dispatcher}>
+      <Owner />
+    </HotkeysProvider>,
+  )
+  const nested = view.getByRole('button', { name: 'Nested' })
+  press(nested, 'F8', { code: 'F8' })
+  expect(command).toHaveBeenCalledOnce()
+  const previous = dispatcher.nodeForElement(nested)
+  fireEvent.click(view.getByRole('button', { name: 'Move scope' }))
+  press(nested, 'F8', { code: 'F8' })
+  expect(command).toHaveBeenCalledTimes(2)
+  expect(dispatcher.nodeForElement(nested)?.parent).not.toBe(previous?.parent)
 })

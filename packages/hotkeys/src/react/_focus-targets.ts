@@ -7,19 +7,21 @@ type ObservedRoot = {
 
 const roots = new WeakMap<Node, ObservedRoot>()
 
-export function observeTargetRef(ref: RefObject<Element | null>, onChange: () => void): () => void {
+export function observeTargetRef(ref: RefObject<Element | null>, onChange: () => void) {
   let element = ref.current
   let root = connectedRoot(element)
-  let release = subscribe(root, resolve)
-  return () => release()
+  const updateRoot = () => resolve(true)
+  let release = subscribe(root, updateRoot)
+  return { refresh: () => resolve(false), dispose: () => release() }
 
-  function resolve() {
+  function resolve(checkRoot: boolean) {
     const next = ref.current
+    if (next === element && !checkRoot) return
     const nextRoot = connectedRoot(next, root)
     if (nextRoot !== root) {
       release()
       root = nextRoot
-      release = subscribe(root, resolve)
+      release = subscribe(root, updateRoot)
     }
     if (next === element) return
     element = next
