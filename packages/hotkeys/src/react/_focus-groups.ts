@@ -15,11 +15,13 @@ export type FocusCommands<Commands extends CommandMap> = {
   readonly [Name in CommandName<Commands>]?: CommandHandler<KeyboardEvent, Commands, Name>
 }
 
+export type FocusContextReader = FocusNodeContext | (() => FocusNodeContext)
+
 export type FocusAttachment<Commands extends CommandMap> = {
   readonly node: FocusNode<KeyboardEvent, Commands>
   readonly sync: (
-    context: () => FocusNodeContext | undefined,
-    commands: () => FocusCommands<Commands> | undefined,
+    context: FocusContextReader | undefined,
+    commands: FocusCommands<Commands> | undefined,
   ) => void
   readonly detach: () => void
 }
@@ -49,15 +51,18 @@ export function attachFocusNode<Commands extends CommandMap>(
   if (!group) parents.set(parent, (group = createGroup(dispatcher, element, parent)))
   const { node, contexts, detachElement } = group
   const handlers = new Map<CommandName<Commands>, () => void>()
-  let readContext: () => FocusNodeContext | undefined = empty
-  let readCommands: () => FocusCommands<Commands> | undefined = empty
-  const read = () => readContext()
+  let committedContext: FocusContextReader | undefined
+  let committedCommands: FocusCommands<Commands> | undefined
+  const read = () =>
+    typeof committedContext === 'function' ? committedContext() : committedContext
   contexts.add(read)
 
-  function sync(context: typeof readContext, commandsForNode: typeof readCommands) {
-    readContext = context
-    readCommands = commandsForNode
-    const commands = readCommands()
+  function sync(
+    context: FocusContextReader | undefined,
+    commands: FocusCommands<Commands> | undefined,
+  ) {
+    committedContext = context
+    committedCommands = commands
     for (const [command, remove] of handlers) {
       if (commands?.[command]) continue
       remove()
@@ -69,7 +74,7 @@ export function attachFocusNode<Commands extends CommandMap>(
       handlers.set(
         command,
         node.handle(command, (event) => {
-          const handle = readCommands()?.[command]
+          const handle = committedCommands?.[command]
           return handle ? handle(event) : false
         }),
       )
@@ -121,8 +126,4 @@ function mergeContexts(readers: ReadonlySet<() => FocusNodeContext | undefined>)
     for (const [key, value] of normalized.values) values.set(key, value)
   }
   return { identifiers, values }
-}
-
-function empty() {
-  return undefined
 }

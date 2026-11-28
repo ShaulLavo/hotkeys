@@ -1,5 +1,6 @@
-import { StrictMode, useState } from 'react'
+import { StrictMode, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
+import type { RefObject } from 'react'
 import {
   createBrowserDispatcher,
   createHotkeyRegistry,
@@ -35,8 +36,19 @@ const rows = [
 ] as const
 
 function Editor() {
-  const { ref } = App.useFocusNode({ context: 'Editor', commands: { editor: () => log('editor') } })
-  return <textarea aria-label='Editor' ref={ref} />
+  const target = useRef<HTMLTextAreaElement>(null)
+  App.useFocusNode({ context: 'Editor', target, commands: { editor: () => log('editor') } })
+  return <EditorField target={target} />
+}
+
+function EditorField({ target }: { target: RefObject<HTMLTextAreaElement | null> }) {
+  const [version, setVersion] = useState(0)
+  return (
+    <>
+      <button onClick={() => setVersion((current) => current + 1)}>Replace editor</button>
+      <textarea key={version} aria-label='Editor' ref={target} />
+    </>
+  )
 }
 
 function Status() {

@@ -12,7 +12,8 @@ import {
 import { createBrowserDispatcher } from '@shaulavo/hotkeys'
 import { RegistryContext } from './_registry-context.js'
 import { attachFocusNode } from './_focus-groups.js'
-import type { FocusAttachment, FocusCommands } from './_focus-groups.js'
+import { observeTargetRef } from './_focus-targets.js'
+import type { FocusAttachment, FocusCommands, FocusContextReader } from './_focus-groups.js'
 import type { HotkeysProviderOptions } from './_registry-context.js'
 import type {
   AnyCommands,
@@ -20,7 +21,6 @@ import type {
   BrowserDispatcherOptions,
   CommandMap,
   FocusNode,
-  FocusNodeContext,
   HotkeyRegistry,
   KeymapEntry,
   PendingChordLabel,
@@ -56,7 +56,7 @@ export type HotkeysProviderProps<Commands extends CommandMap = AnyCommands> =
 type Node<Commands extends CommandMap> = FocusNode<KeyboardEvent, Commands>
 
 export type UseFocusNodeOptions<Commands extends CommandMap = AnyCommands> = {
-  readonly context?: FocusNodeContext | (() => FocusNodeContext)
+  readonly context?: FocusContextReader
   readonly commands?: FocusCommands<Commands>
   readonly parent?: Node<Commands> | null
   readonly target?: RefObject<Element | null> | Element | null
@@ -155,11 +155,19 @@ export function createHotkeysContext<
     const { ref: bindFocus } = focus
     const bind = useCallback(
       (element: HTMLDivElement | null) => {
-        const detach = bindFocus(element)
         const detachRef = attachRef(ref, element)
-        return () => {
-          if (typeof detach === 'function') detach()
+        try {
+          const detach = bindFocus(element)
+          return () => {
+            try {
+              if (typeof detach === 'function') detach()
+            } finally {
+              detachRef()
+            }
+          }
+        } catch (error) {
           detachRef()
+          throw error
         }
       },
       [bindFocus, ref],
@@ -233,6 +241,7 @@ type BoundNode<Commands extends CommandMap> = {
   readonly dispatcher: BrowserDispatcher<Commands>
   readonly element: Element
   readonly attachment: FocusAttachment<Commands>
+  readonly explicit: boolean
 }
 
 function useNodeAttachment<Commands extends CommandMap>(
@@ -242,70 +251,91 @@ function useNodeAttachment<Commands extends CommandMap>(
   { context, commands, target, enabled = true }: UseFocusNodeOptions<Commands>,
 ): UseFocusNodeResult<Commands> {
   const bound = useRef<BoundNode<Commands> | null>(null)
+  const pendingDetach = useRef<BoundNode<Commands> | null>(null)
   const [snapshot, publishNode] = useCommitSnapshot<BoundNode<Commands>>()
-  const readContext = useEffectEvent(() => (typeof context === 'function' ? context() : context))
-  const readCommands = useEffectEvent(() => commands)
   const canAttach = enabled && ready && dispatcher !== null
   const usesExplicitTarget = target !== undefined
+  const targetRef = target && 'current' in target ? target : null
+
+  const release = useCallback(() => {
+    const current = bound.current
+    if (!current) return
+    bound.current = null
+    pendingDetach.current = null
+    current.attachment.detach()
+    publishNode(null)
+  }, [publishNode])
+
+  const detachRef = useCallback(
+    (current: BoundNode<Commands>) => {
+      if (current.explicit || bound.current !== current) return
+      pendingDetach.current = current
+      // A composed ref may detach and reattach the same element in one commit.
+      queueMicrotask(() => {
+        if (pendingDetach.current === current) release()
+      })
+    },
+    [release],
+  )
 
   const attach = useCallback(
-    (element: Element) => {
+    (element: Element, explicit: boolean) => {
       if (!canAttach || !dispatcher) return
+      const current = bound.current
+      if (
+        current?.element === element &&
+        current.parent === parent &&
+        current.dispatcher === dispatcher &&
+        current.explicit === explicit
+      ) {
+        pendingDetach.current = null
+        return () => detachRef(current)
+      }
+      release()
       const attachment = attachFocusNode(dispatcher, element, parent)
-      const next = { dispatcher, parent, element, attachment }
+      const next = { dispatcher, parent, element, attachment, explicit }
       bound.current = next
       publishNode(next)
-      return () => {
-        attachment.detach()
-        if (bound.current?.attachment !== attachment) return
-        bound.current = null
-        publishNode(null)
-      }
+      return () => detachRef(next)
     },
-    [canAttach, dispatcher, parent, publishNode],
+    [canAttach, detachRef, dispatcher, parent, publishNode, release],
   )
 
   const ref = useCallback(
     (element: Element | null) => {
-      if (usesExplicitTarget || element === null) return
-      return attach(element)
+      if (usesExplicitTarget) return
+      if (element) return attach(element, false)
+      if (bound.current) detachRef(bound.current)
+      return undefined
     },
-    [attach, usesExplicitTarget],
+    [attach, detachRef, usesExplicitTarget],
   )
 
-  const explicitCleanup = useRef<(() => void) | undefined>(undefined)
-  useLayoutEffect(() => {
-    if (target === undefined) {
-      explicitCleanup.current?.()
-      explicitCleanup.current = undefined
-      return
+  const commitAttachment = useEffectEvent(() => {
+    if (target !== undefined) {
+      const element = target && 'current' in target ? target.current : target
+      const current = bound.current
+      if (!canAttach || !element) release()
+      else if (
+        current?.element !== element ||
+        current.dispatcher !== dispatcher ||
+        current.parent !== parent
+      )
+        attach(element, true)
+    } else if (bound.current?.explicit) {
+      release()
     }
-    const element = target && 'current' in target ? target.current : target
-    const existing = bound.current
-    if (
-      canAttach &&
-      existing &&
-      existing.element === element &&
-      existing.dispatcher === dispatcher &&
-      existing.parent === parent
-    )
-      return
-    explicitCleanup.current?.()
-    explicitCleanup.current = element ? attach(element) : undefined
+    bound.current?.attachment.sync(context, commands)
   })
-  useLayoutEffect(
-    () => () => {
-      explicitCleanup.current?.()
-      explicitCleanup.current = undefined
-    },
-    [],
-  )
+
   useLayoutEffect(() => {
-    bound.current?.attachment.sync(
-      () => readContext(),
-      () => readCommands(),
-    )
+    commitAttachment()
   })
+  useLayoutEffect(() => {
+    if (!canAttach || !targetRef) return
+    return observeTargetRef(targetRef, () => commitAttachment())
+  }, [canAttach, targetRef])
+  useLayoutEffect(() => () => release(), [release])
 
   const current = canAttach && snapshot?.dispatcher === dispatcher && snapshot.parent === parent
   return { ref, node: current ? snapshot.attachment.node : null, dispatcher }
@@ -343,5 +373,12 @@ function attachRef<T>(ref: Ref<T> | undefined, element: T | null): () => void {
   }
 }
 
-export const { HotkeysProvider, FocusScope, useFocusNode, useHotkeysDispatcher, usePendingChord } =
-  createHotkeysContext()
+const defaultHotkeys = /* @__PURE__ */ createHotkeysContext()
+function defaultBinding<Name extends keyof TypedHotkeysContext<AnyCommands>>(name: Name) {
+  return defaultHotkeys[name]
+}
+export const HotkeysProvider = /* @__PURE__ */ defaultBinding('HotkeysProvider')
+export const FocusScope = /* @__PURE__ */ defaultBinding('FocusScope')
+export const useFocusNode = /* @__PURE__ */ defaultBinding('useFocusNode')
+export const useHotkeysDispatcher = /* @__PURE__ */ defaultBinding('useHotkeysDispatcher')
+export const usePendingChord = /* @__PURE__ */ defaultBinding('usePendingChord')

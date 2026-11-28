@@ -94,7 +94,7 @@ function reconcileRegistrations(
   if (!registry) return
   for (const row of rows.values()) {
     const existing = registrations.get(row.key)
-    if (existing) {
+    if (existing?.handle.isActive) {
       existing.handle.callback = row.callback
       existing.handle.replaceOptions(row.options)
       continue

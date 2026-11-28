@@ -17,7 +17,7 @@ Run these scripts from the repository root:
 | `bun run test`         | Runs Vitest across workspaces.                                                                                                                                                                           |
 | `bun run pack`         | Runs `node scripts/pack.mjs` to create the release tarball, `release/manifest.json`, and `release/SHA256SUMS`.                                                                                           |
 | `bun run test:package` | Runs `node scripts/check-package.mjs` and `node scripts/check-package.mjs --bun` against the packed tarball.                                                                                             |
-| `bun run test:browser` | Runs `node scripts/check-packed-browser.ts` in Chromium against the packed tarball and `react@19.2.0`.                                                                                                   |
+| `bun run test:browser` | Runs `node scripts/check-packed-browser.mts` in Chromium against the packed tarball and `react@19.2.0`.                                                                                                  |
 | `bun run verify`       | Runs `build`, `typecheck`, `lint`, `format:check`, `test`, `pack`, and `test:package` in order.                                                                                                          |
 
 Run `bun run verify` and `bun run test:browser` before opening or merging a release-ready pull request.

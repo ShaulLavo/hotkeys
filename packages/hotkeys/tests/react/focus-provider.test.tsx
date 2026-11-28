@@ -1,5 +1,5 @@
-import { StrictMode, createRef, useLayoutEffect } from 'react'
-import { act, fireEvent, render, renderHook } from '@testing-library/react'
+import { StrictMode, createRef, useLayoutEffect, useRef, useState } from 'react'
+import { act, fireEvent, render, renderHook, waitFor } from '@testing-library/react'
 import { expect, expectTypeOf, it, vi } from 'vitest'
 import { createBrowserDispatcher, createHotkeyRegistry, parseShortcut } from '../../src/index.js'
 import type { BrowserDispatcher, KeymapEntry } from '../../src/index.js'
@@ -54,6 +54,7 @@ it('routes nested nodes and merges independent registrations on one element in S
         aria-label='Editor'
         ref={target}
         data-shared={first.node !== null && first.node === second.node}
+        data-context={first.node?.context().identifiers.has('Editor') ?? false}
       />
     )
   }
@@ -102,6 +103,7 @@ it('routes nested nodes and merges independent registrations on one element in S
   const editor = view.getByRole('textbox')
   const button = view.getByRole('button')
   expect(editor.getAttribute('data-shared')).toBe('true')
+  expect(editor.getAttribute('data-context')).toBe('true')
   const instance = lastDispatcher!
   const node = instance.nodeForElement(editor)
   press(button, 'b', { ctrlKey: true })
@@ -280,4 +282,118 @@ it('keeps provider ownership and child command payloads constrained', () => {
     useHotkeys([{ callback: () => {} }])
   }
   expectTypeOf(useCheckTypes).toBeFunction()
+})
+
+it('observes a ref target a child replaces without rendering the hook owner', async () => {
+  using dispatcher = createBrowserDispatcher({ keymap: [{ keys: 'F8', command: 'go' }] })
+  const command = vi.fn()
+  function Switchable({ target }: { target: React.RefObject<HTMLButtonElement | null> }) {
+    const [version, setVersion] = useState(0)
+    return (
+      <button key={version} ref={target} onClick={() => setVersion((n) => n + 1)}>
+        Target {version}
+      </button>
+    )
+  }
+  function Owner() {
+    const target = useRef<HTMLButtonElement>(null)
+    useFocusNode({ target, commands: { go: command } })
+    return <Switchable target={target} />
+  }
+  const view = render(
+    <HotkeysProvider dispatcher={dispatcher}>
+      <Owner />
+    </HotkeysProvider>,
+  )
+  const before = view.getByRole('button')
+  expect(dispatcher.nodeForElement(before)).not.toBeNull()
+  fireEvent.click(before)
+  const after = view.getByRole('button', { name: 'Target 1' })
+  expect(after).not.toBe(before)
+  await waitFor(() => expect(dispatcher.nodeForElement(after)).not.toBeNull())
+  expect(dispatcher.nodeForElement(before)).toBeNull()
+  press(after, 'F8', { code: 'F8' })
+  expect(command).toHaveBeenCalledOnce()
+})
+
+it('detaches a composed ref when the wrapper returns no cleanup', async () => {
+  using dispatcher = createBrowserDispatcher()
+  function Owner({ visible }: { visible: boolean }) {
+    const { ref } = useFocusNode({ context: 'Editor' })
+    return visible ? (
+      <button
+        ref={(element) => {
+          ref(element)
+        }}
+      >
+        Target
+      </button>
+    ) : null
+  }
+  const view = render(
+    <HotkeysProvider dispatcher={dispatcher}>
+      <Owner visible />
+    </HotkeysProvider>,
+  )
+  const element = view.getByRole('button')
+  expect(dispatcher.nodeForElement(element)).not.toBeNull()
+  view.rerender(
+    <HotkeysProvider dispatcher={dispatcher}>
+      <Owner visible={false} />
+    </HotkeysProvider>,
+  )
+  await waitFor(() => expect(dispatcher.nodeForElement(element)).toBeNull())
+})
+
+it('rolls back a focus node when forwarding the scope ref throws', () => {
+  using dispatcher = createBrowserDispatcher()
+  const target: { current: HTMLDivElement | null } = { current: null }
+  expect(() =>
+    render(
+      <HotkeysProvider dispatcher={dispatcher}>
+        <FocusScope
+          ref={(element) => {
+            if (!element) return
+            target.current = element
+            throw new Error('ref failed')
+          }}
+        >
+          Scope
+        </FocusScope>
+      </HotkeysProvider>,
+    ),
+  ).toThrow('ref failed')
+  expect(target.current).not.toBeNull()
+  expect(dispatcher.nodeForElement(target.current!)).toBeNull()
+})
+
+it('reacquires a later row after an earlier replace invalidates its handle', () => {
+  using registry = createHotkeyRegistry()
+  const later = vi.fn()
+  function Rows({ rebound }: { rebound: boolean }) {
+    useHotkeys([
+      {
+        id: 'first',
+        hotkey: rebound ? 'F9' : 'F8',
+        callback: () => false,
+        options: { conflictBehavior: 'replace' },
+      },
+      { id: 'later', hotkey: 'F9', callback: later, options: { conflictBehavior: 'allow' } },
+    ])
+    return null
+  }
+  const view = render(
+    <HotkeysProvider registry={registry}>
+      <Rows rebound={false} />
+    </HotkeysProvider>,
+  )
+  expect(registry.registrations.state.size).toBe(2)
+  view.rerender(
+    <HotkeysProvider registry={registry}>
+      <Rows rebound />
+    </HotkeysProvider>,
+  )
+  expect(registry.registrations.state.size).toBe(2)
+  press(document, 'F9', { code: 'F9' })
+  expect(later).toHaveBeenCalledOnce()
 })

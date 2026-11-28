@@ -90,6 +90,39 @@ async function checkMapping(targetJs, targetMap, sourceIndex, sourceFile, functi
   assert(entry.originalColumn >= 0 && entry.originalColumn < originalLine.length)
 }
 
+async function checkMinimalHook(directory) {
+  await writeFile(
+    join(directory, 'hook.ts'),
+    `
+import { useHotkey } from '@shaulavo/hotkeys/react'
+export function Save() {
+  useHotkey('Mod+S', () => {})
+  return null
+}
+`,
+  )
+  execFileSync(
+    'bun',
+    [
+      'build',
+      'hook.ts',
+      '--target=browser',
+      '--minify',
+      '--external=react',
+      '--external=react-dom',
+      '--outfile=hook.js',
+    ],
+    { cwd: directory },
+  )
+  const bundle = await readFile(join(directory, 'hook.js'), 'utf8')
+  assert.doesNotMatch(
+    bundle,
+    /useFocusNode requires a HotkeysProvider/,
+    'Importing useHotkey must exclude the focus provider',
+  )
+  console.log('The minimal useHotkey bundle excludes the focus provider.')
+}
+
 const temporary = await mkdtemp(join(tmpdir(), 'hotkeys-consumer-'))
 
 try {
@@ -440,6 +473,7 @@ recordedSequence.push('Escape')
     )
   }
   console.log('Packed declarations resolve with Bundler and NodeNext outside the workspace.')
+  if (!bun) await checkMinimalHook(temporary)
 } finally {
   await rm(temporary, { recursive: true, force: true })
 }

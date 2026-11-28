@@ -86,11 +86,15 @@ async function runScenario(page: Page) {
   await editor.focus()
   await page.keyboard.press('Control+b')
   await textEquals(log, 'workspace\neditor\n')
+  await page.getByRole('button', { name: 'Replace editor' }).click()
+  await editor.focus()
+  await page.keyboard.press('Control+b')
+  await textEquals(log, 'workspace\neditor\neditor\n')
   await page.keyboard.press('Control+k')
   await textEquals(pending, 'Control+K')
   await page.keyboard.press('Control+c')
   await textEquals(pending, 'idle')
-  await textEquals(log, 'workspace\neditor\nchord\n')
+  await textEquals(log, 'workspace\neditor\neditor\nchord\n')
 
   await page.keyboard.down('ShiftLeft')
   await page.keyboard.down('ShiftRight')
@@ -104,7 +108,7 @@ async function runScenario(page: Page) {
   const second = page.frameLocator('#second').getByRole('button')
   await first.focus()
   await page.keyboard.press('F8')
-  const once = 'workspace\neditor\nchord\nregistered\n'
+  const once = 'workspace\neditor\neditor\nchord\nregistered\n'
   await textEquals(log, once)
 
   await page.getByRole('button', { name: 'Swap' }).click()
