@@ -11,21 +11,41 @@ export function observeTargetRef(
   ref: RefObject<Element | null>,
   reconcile: (element: Element | null) => void,
 ) {
-  let root = ref.current?.getRootNode() ?? document
-  let release = subscribe(root, refresh)
-  return { refresh, dispose: () => release() }
+  let owner: Document | undefined
+  let localRoot: Node | null = null
+  let releaseDocument: (() => void) | undefined
+  let releaseLocalRoot: (() => void) | undefined
+  refresh()
+  return { refresh, dispose }
 
   function refresh() {
     const element = ref.current
-    // Keep observing a detached subtree so its later insertion preserves removal tracking.
-    const nextRoot = element?.getRootNode() ?? root
-    if (nextRoot !== root) {
-      release()
-      root = nextRoot
-      release = subscribe(root, refresh)
+    const nextOwner = element?.ownerDocument ?? owner ?? document
+    if (nextOwner !== owner) {
+      releaseDocument?.()
+      owner = nextOwner
+      releaseDocument = subscribe(owner, refresh)
+    }
+
+    // A target may move back into the document while its old subtree remains detached.
+    const nextRoot = element ? element.getRootNode() : connectedShadowRoot(localRoot)
+    const extraRoot = nextRoot === owner ? null : nextRoot
+    if (extraRoot !== localRoot) {
+      releaseLocalRoot?.()
+      localRoot = extraRoot
+      releaseLocalRoot = localRoot ? subscribe(localRoot, refresh) : undefined
     }
     reconcile(element)
   }
+
+  function dispose() {
+    releaseLocalRoot?.()
+    releaseDocument?.()
+  }
+}
+
+function connectedShadowRoot(root: Node | null): Node | null {
+  return root?.isConnected && 'host' in root ? root : null
 }
 
 function subscribe(root: Node, resolve: () => void): () => void {

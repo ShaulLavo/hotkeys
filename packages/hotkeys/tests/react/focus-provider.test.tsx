@@ -616,3 +616,55 @@ it('tracks target removal after its detached container moves into a shadow root'
     host.remove()
   }
 })
+
+it('keeps watching the document while a ref points into a detached portal', async () => {
+  using dispatcher = createBrowserDispatcher({ keymap: [{ keys: 'F8', command: 'go' }] })
+  const portal = document.body.appendChild(document.createElement('div'))
+  const command = vi.fn()
+
+  function Targets({ target }: { target: React.RefObject<HTMLButtonElement | null> }) {
+    const [moved, setMoved] = useState(false)
+    return (
+      <>
+        <button onClick={() => setMoved(true)}>Move to document</button>
+        {createPortal(<button ref={moved ? null : target}>Portal target</button>, portal)}
+        {moved && <button ref={target}>Document target</button>}
+      </>
+    )
+  }
+  function Owner() {
+    const target = useRef<HTMLButtonElement>(null)
+    useFocusNode({ target, commands: { go: command } })
+    return <Targets target={target} />
+  }
+
+  const view = render(
+    <HotkeysProvider dispatcher={dispatcher}>
+      <Owner />
+    </HotkeysProvider>,
+  )
+  try {
+    const before = portal.querySelector('button')!
+    expect(dispatcher.nodeForElement(before)).not.toBeNull()
+    await act(async () => {
+      await new Promise<void>((resolve) => {
+        const observer = new MutationObserver(() => {
+          observer.disconnect()
+          resolve()
+        })
+        observer.observe(document.body, { childList: true })
+        portal.remove()
+      })
+    })
+    fireEvent.click(view.getByRole('button', { name: 'Move to document' }))
+    const after = view.getByRole('button', { name: 'Document target' })
+    await waitFor(() => expect(dispatcher.nodeForElement(after)).not.toBeNull())
+    expect(dispatcher.nodeForElement(before)).toBeNull()
+    expect(portal.contains(before)).toBe(true)
+    press(after, 'F8', { code: 'F8' })
+    expect(command).toHaveBeenCalledOnce()
+  } finally {
+    view.unmount()
+    portal.remove()
+  }
+})
