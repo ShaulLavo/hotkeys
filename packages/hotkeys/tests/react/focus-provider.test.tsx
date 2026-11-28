@@ -1233,3 +1233,50 @@ it('moves composed registrations before a reparented child ref reads the group',
     view.unmount()
   }
 })
+
+it('attaches a revealed Activity scope before its forwarded ref', async () => {
+  using dispatcher = createBrowserDispatcher({
+    keymap: [{ keys: 'F8', command: 'go', context: 'mode == forwarded' }],
+  })
+  const scopeCommand = vi.fn()
+  const forwardedCommand = vi.fn()
+  const atForward: Array<string | undefined> = []
+
+  function Owner({ mode }: { mode: 'visible' | 'hidden' }) {
+    const { ref } = useFocusNode({
+      context: 'mode=forwarded',
+      commands: { go: forwardedCommand },
+    })
+    const bind: React.RefCallback<HTMLDivElement> = useCallback(
+      (element) => {
+        if (element)
+          atForward.push(dispatcher.nodeForElement(element)?.context().values.get('mode'))
+        return ref(element)
+      },
+      [ref],
+    )
+    return (
+      <Activity mode={mode}>
+        <FocusScope ref={bind} context='mode=scope' commands={{ go: scopeCommand }}>
+          <button>Target</button>
+        </FocusScope>
+      </Activity>
+    )
+  }
+
+  const app = (mode: 'visible' | 'hidden') => (
+    <HotkeysProvider dispatcher={dispatcher}>
+      <Owner mode={mode} />
+    </HotkeysProvider>
+  )
+  const view = render(app('visible'))
+  const target = view.getByRole('button')
+  view.rerender(app('hidden'))
+  await waitFor(() => expect(dispatcher.nodeForElement(target)).toBeNull())
+  view.rerender(app('visible'))
+  expect(atForward).toEqual(['scope', 'scope'])
+  expect(dispatcher.nodeForElement(target)?.context().values.get('mode')).toBe('forwarded')
+  press(target, 'F8', { code: 'F8' })
+  expect(scopeCommand).toHaveBeenCalledOnce()
+  expect(forwardedCommand).not.toHaveBeenCalled()
+})

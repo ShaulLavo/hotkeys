@@ -395,6 +395,8 @@ function useNodeAttachment<Commands extends CommandMap>(
         if (attachedRef.current) detachRef(attachedRef.current)
         return
       }
+      // Activity can reattach this host ref before reconnecting layout effects.
+      layoutActive.current = true
       const entry = { element }
       attachedRef.current = entry
       resolve()

@@ -366,7 +366,13 @@ for (const Recorder of [HotkeyRecorder, HotkeySequenceRecorder]) {
 }
 `
   await writeFile(join(temporary, 'consumer.mjs'), consumer)
-  execFileSync(process.execPath, ['consumer.mjs'], { cwd: temporary, stdio: 'inherit' })
+  for (const NODE_ENV of ['development', 'production']) {
+    execFileSync(process.execPath, ['consumer.mjs'], {
+      cwd: temporary,
+      env: { ...process.env, NODE_ENV },
+      stdio: 'inherit',
+    })
+  }
   const batchConsumer = await readFile(join(root, 'scripts/fixtures/batch-consumer.ts'), 'utf8')
   await writeFile(join(temporary, 'batch-consumer.ts'), batchConsumer)
   await writeFile(join(temporary, 'batch-consumer.mjs'), stripTypeScriptTypes(batchConsumer))
