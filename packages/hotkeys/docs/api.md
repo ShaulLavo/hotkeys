@@ -234,8 +234,11 @@ Passing both `dispatcher` and `keymap` (or owned options alongside `dispatcher`)
 - `useFocusNode(options: UseFocusNodeOptions<Commands>)`:
   - `options`: `{ context?, commands?, parent?, target?, enabled? }`. `parent` defaults to the nearest ancestor `<FocusScope>` (or `null` at the root).
   - Returns `{ ref, node, dispatcher }`.
+  - When `target` is omitted, the returned callback `ref` attaches immediately on mount or remount, including detached portals, once the dispatcher and parent are ready.
+  - When `target` is supplied, the returned callback `ref` does nothing. A `RefObject` `target` resolves on the hook owner's commits, on observed DOM mutations, and before key dispatch.
+  - For synchronous `dispatcher.nodeForElement` lookup across detached remounts when the hook owner does not commit, either omit `target` and attach the returned callback `ref` to the element, or use the default `<FocusScope>` wrapper.
   - Multiple hooks attached to the same `(element, parent)` on one dispatcher share a single element-attached focus node, merge their contexts on every capture, and manage their own handlers independently.
-- `<FocusScope>`: wraps `useFocusNode`, renders a `<div>` accepting `ref`, `id`, `className`, and `children`, and provides its `node` to descendants. When `enabled={false}`, descendants inherit the ancestor scope.
+- `<FocusScope>`: wraps `useFocusNode`, renders a `<div>` accepting `ref`, `id`, `className`, and `children`, and provides its `node` to descendants. When `target` is omitted, `<FocusScope>` attaches immediately to its wrapper `<div>` through the callback `ref`. When `enabled={false}`, descendants inherit the ancestor scope.
 
 #### `useHotkeysDispatcher()` and `usePendingChord()`
 

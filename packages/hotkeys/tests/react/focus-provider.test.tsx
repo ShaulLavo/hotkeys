@@ -727,3 +727,93 @@ it('registers a replacement in a detached portal before any key event', async ()
     host.remove()
   }
 })
+
+it.each(['callback', 'object'] as const)(
+  'resolves a same-turn detached portal remount with a %s ref',
+  async (mode) => {
+    using dispatcher = createBrowserDispatcher({
+      keymap: [{ keys: 'F8', command: 'go', context: 'Portal' }],
+    })
+    const portal = document.body.appendChild(document.createElement('div'))
+    const host = document.body.appendChild(document.createElement('div'))
+    const shadow = host.attachShadow({ mode: 'open' })
+    const command = vi.fn()
+    const synchronous: boolean[] = []
+
+    function Targets({ bindTarget }: { bindTarget: React.Ref<HTMLButtonElement> }) {
+      const [stage, setStage] = useState('mounted')
+      function detach() {
+        portal.remove()
+        setStage('detached')
+      }
+      return (
+        <>
+          <button onClick={detach}>Detach and clear</button>
+          <button onClick={() => setStage('remounted')}>Remount</button>
+          {createPortal(
+            stage === 'detached' ? null : (
+              <button ref={bindTarget} data-stage={stage}>
+                Target
+              </button>
+            ),
+            portal,
+          )}
+        </>
+      )
+    }
+
+    function Owner() {
+      const target = useRef<HTMLButtonElement>(null)
+      const { ref } = useFocusNode({
+        context: 'Portal',
+        commands: { go: command },
+        ...(mode === 'object' && { target }),
+      })
+      const recordAttachment: React.RefCallback<HTMLButtonElement> = (element) => {
+        const detach = ref(element)
+        if (element?.dataset.stage === 'remounted') {
+          const node = dispatcher.nodeForElement(element)
+          synchronous.push(
+            node !== null &&
+              node.context().identifiers.has('Portal') &&
+              dispatcher.dispatchCommandFrom(node, 'go'),
+          )
+        }
+        return detach
+      }
+      return <Targets bindTarget={mode === 'callback' ? recordAttachment : target} />
+    }
+
+    const view = render(
+      <HotkeysProvider dispatcher={dispatcher}>
+        <Owner />
+      </HotkeysProvider>,
+    )
+    try {
+      const before = portal.querySelector('button')!
+      expect(dispatcher.nodeForElement(before)).not.toBeNull()
+      fireEvent.click(view.getByRole('button', { name: 'Detach and clear' }))
+      await waitFor(() => expect(dispatcher.nodeForElement(before)).toBeNull())
+
+      fireEvent.click(view.getByRole('button', { name: 'Remount' }))
+      const after = portal.querySelector('button')!
+      expect(after).not.toBe(before)
+      if (mode === 'callback') {
+        expect(synchronous.length).toBeGreaterThan(0)
+        expect(synchronous).not.toContain(false)
+        expect(dispatcher.nodeForElement(after)).not.toBeNull()
+      }
+      command.mockClear()
+      shadow.append(portal)
+      press(after, 'F8', { code: 'F8', composed: true })
+      expect(command).toHaveBeenCalledOnce()
+      expect(dispatcher.nodeForElement(after)).not.toBeNull()
+      view.unmount()
+      expect(dispatcher.nodeForElement(after)).toBeNull()
+    } finally {
+      view.unmount()
+      portal.remove()
+      host.remove()
+    }
+  },
+)
