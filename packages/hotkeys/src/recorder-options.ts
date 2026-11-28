@@ -1,6 +1,8 @@
 import type { Hotkey, ParsedHotkey } from './hotkey.types.js'
 import type { HotkeyConflict, HotkeyConflictOptions } from './conflicts.js'
 
+export type RecorderModifierMode = 'adaptive' | 'literal'
+
 /** Event property used to record a binding. Physical codes are the default. */
 export type RecorderKeyMode = 'code' | 'key'
 
@@ -15,6 +17,7 @@ export interface RecorderRejection {
 export interface RecorderOptions {
   /** Physical code recording is the default. Choose key to record logical characters. */
   recordBy?: RecorderKeyMode
+  modifierMode?: RecorderModifierMode
   /** Platform used for Mod and AltGraph handling. Defaults to platform detection. */
   platform?: 'mac' | 'windows' | 'linux'
   /** Opt in to live-registry conflicts, including sequence prefixes. Default: false. */

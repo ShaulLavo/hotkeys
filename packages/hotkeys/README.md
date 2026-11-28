@@ -1,27 +1,30 @@
 # @shaulavo/hotkeys
 
-Keyboard shortcut registration, chords, context-aware keymaps, and display formatting for browser and terminal apps.
+Keyboard shortcuts, chords, focus-aware keymaps, and display formatting for browser and terminal apps, with optional React hooks.
 
 ## Install
 
-Install a commit-pinned tarball from [hotkeys releases](https://github.com/ShaulLavo/hotkeys/releases), as described in the [installation guide](https://github.com/ShaulLavo/hotkeys/blob/main/docs/development.md#install).
-
-## Use
-
-```ts
-import { getHotkeyRegistry } from '@shaulavo/hotkeys'
-
-function mountShortcuts(onSave: () => void): () => void {
-  const save = getHotkeyRegistry().register('Mod+S', onSave)
-  return () => save.unregister()
-}
-
-const cleanup = mountShortcuts(() => console.log('Save requested'))
-// Call cleanup() when the view unmounts.
+```sh
+bun add @shaulavo/hotkeys
 ```
 
-`Mod` is Command on macOS and Control elsewhere.
+```ts
+import { createBrowserDispatcher, registerHotkey } from '@shaulavo/hotkeys'
+const keys = createBrowserDispatcher({
+  keymap: [
+    { keys: 'Mod+B', command: 'sidebar.toggle', context: 'Workspace' },
+    { keys: 'Mod+B', command: 'text.bold', context: 'Editor' },
+  ],
+})
+const ws = keys.createNode({ context: 'Workspace', commands: { 'sidebar.toggle': () => {} } })
+const ed = keys.createNode({ parent: ws, context: 'Editor', commands: { 'text.bold': () => {} } })
+const editor = document.body.appendChild(document.createElement('textarea'))
+keys.attachElement(ws, document.body)
+keys.attachElement(ed, editor)
+editor.focus()
+const save = registerHotkey('Mod+S', () => console.log('Save'))
+// Call save.dispose() and keys.dispose() on teardown.
+```
 
-[API](docs/api.md) · [Concepts](docs/concepts.md) · [Keymap rules](docs/keymaps.md) · [Troubleshooting](docs/troubleshooting.md) · [React hooks](https://github.com/ShaulLavo/hotkeys/tree/main/packages/react-hotkeys)
-
+Subpaths: `./react`, `./terminal`, `./adapter`. [API](docs/api.md) · [Concepts](docs/concepts.md) · [Keymaps](docs/keymaps.md) · [Performance](docs/performance.md) · [Troubleshooting](docs/troubleshooting.md)
 [MIT](LICENSE). Forked from [TanStack Hotkeys](https://github.com/TanStack/hotkeys).

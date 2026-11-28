@@ -7,7 +7,7 @@ import type {
   HotkeyCallback,
   HotkeySequence,
   HotkeyOptions,
-  HotkeyRegistrationHandle,
+  HotkeyRegistration,
 } from '@shaulavo/hotkeys'
 
 export interface UseHotkeySequenceOptions extends Omit<HotkeyOptions, 'target'> {
@@ -75,7 +75,7 @@ export function useHotkeySequence(
   }
 
   // Stable ref for registration handle
-  const registrationRef = useRef<HotkeyRegistrationHandle | null>(null)
+  const registrationRef = useRef<HotkeyRegistration | null>(null)
 
   // Refs to capture current values for use in effect without adding dependencies
   const callbackRef = useRef(callback)
@@ -95,7 +95,7 @@ export function useHotkeySequence(
   useEffect(() => {
     if (sequenceRef.current.length === 0) {
       if (registrationRef.current?.isActive) {
-        registrationRef.current.unregister()
+        registrationRef.current.dispose()
         registrationRef.current = null
       }
       registeredIdentityRef.current = null
@@ -108,7 +108,7 @@ export function useHotkeySequence(
     // Wait until the target is available, for example when a ref is attached.
     if (!resolvedTarget) {
       if (registrationRef.current?.isActive) {
-        registrationRef.current.unregister()
+        registrationRef.current.dispose()
         registrationRef.current = null
       }
       registeredIdentityRef.current = null
@@ -120,7 +120,7 @@ export function useHotkeySequence(
       registeredIdentityRef.current !== null && registeredIdentityRef.current !== identity
 
     if (registrationRef.current?.isActive && sequenceChanged) {
-      registrationRef.current.unregister()
+      registrationRef.current.dispose()
       registrationRef.current = null
     }
 
@@ -144,7 +144,7 @@ export function useHotkeySequence(
     // Cleanup on unmount
     return () => {
       if (registrationRef.current?.isActive) {
-        registrationRef.current.unregister()
+        registrationRef.current.dispose()
         registrationRef.current = null
       }
     }

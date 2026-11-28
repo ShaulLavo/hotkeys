@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from 'vitest'
 import { createBrowserDispatcher } from '../../src'
-import type { BrowserDispatcher, KeyResetReason } from '../../src'
+import type { BrowserDispatcher } from '../../src'
+import type { KeyResetReason } from '../../src/adapter/index.js'
 
 let dispatcher: BrowserDispatcher | undefined
 afterEach(() => {

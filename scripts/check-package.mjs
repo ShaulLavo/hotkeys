@@ -21,6 +21,8 @@ const sourceMapSamples = [
   ['.', 'src/parse.ts', 'parseHotkey'],
   ['./react', 'src/react/useHotkey.ts', 'useHotkey'],
   ['./react', 'src/react/HotkeysProvider.tsx', 'HotkeysProvider'],
+  ['./terminal', 'src/terminal/index.ts', 'createTerminalDispatcher'],
+  ['./adapter', 'src/chords/trie.ts', 'trieStep'],
 ]
 
 function assertRelativePath(path, label) {
@@ -35,48 +37,48 @@ function assertRelativePath(path, label) {
 
 async function checkSourceMap(directory, manifest, exportKey, sourceFile, functionName) {
   const entrypoint = join(directory, manifest.exports[exportKey].import)
-  const javascript = await readFile(entrypoint, 'utf8')
-  const reference = javascript.match(/\/\/# sourceMappingURL=(\S+)\s*$/)?.[1]
-  assert(reference, `${manifest.name} (${exportKey}): missing linked JavaScript source map`)
-  assertRelativePath(reference, `${manifest.name} (${exportKey}) sourceMappingURL`)
-  const map = JSON.parse(await readFile(join(dirname(entrypoint), reference), 'utf8'))
-  assert.equal(map.version, 3)
-  assert(typeof map.mappings === 'string' && map.mappings.length > 0)
-  assert(Array.isArray(map.sources) && map.sources.length > 0)
-  assert(Array.isArray(map.sourcesContent))
-  assert.equal(map.sourcesContent.length, map.sources.length)
-  if (map.sourceRoot) assertRelativePath(map.sourceRoot, `${manifest.name} sourceRoot`)
-  for (const [index, source] of map.sources.entries()) {
-    assertRelativePath(source, `${manifest.name} source`)
-    assert(
-      typeof map.sourcesContent[index] === 'string' && map.sourcesContent[index].trim().length > 0,
-      `${manifest.name}: missing embedded source for ${source}`,
+  const files = [entrypoint]
+  for (const file of files) {
+    const javascript = await readFile(file, 'utf8')
+    const map = await readLinkedMap(file, javascript)
+    const sourceIndex = map.sources.findIndex(
+      (name) => name === sourceFile || name.endsWith(`/${sourceFile}`),
     )
-  }
-
-  // With --splitting, code may live in a shared chunk imported by the entrypoint.
-  let targetJs = javascript
-  let targetMap = map
-  let offset = targetJs.indexOf(`function ${functionName}(`)
-  if (offset < 0) {
-    const chunkMatch = javascript.match(/from\s*["'](\.\.?\/[^"']+\.js)["']/)
-    if (chunkMatch) {
-      const chunkPath = join(dirname(entrypoint), chunkMatch[1])
-      targetJs = await readFile(chunkPath, 'utf8')
-      const chunkRef = targetJs.match(/\/\/# sourceMappingURL=(\S+)\s*$/)?.[1]
-      assert(chunkRef, `${manifest.name}: missing chunk source map`)
-      targetMap = JSON.parse(await readFile(join(dirname(chunkPath), chunkRef), 'utf8'))
-      offset = targetJs.indexOf(`function ${functionName}(`)
+    if (sourceIndex >= 0) {
+      await checkMapping(javascript, map, sourceIndex, sourceFile, functionName)
+      return
+    }
+    for (const match of javascript.matchAll(/from\s*["'](\.\.?\/[^"']+\.js)["']/g)) {
+      const imported = join(dirname(file), match[1])
+      if (!files.includes(imported)) files.push(imported)
     }
   }
+  assert.fail(`${manifest.name} (${exportKey}): missing source ${sourceFile}`)
+}
 
-  const sourceIndex = targetMap.sources.findIndex(
-    (name) => name === sourceFile || name.endsWith(`/${sourceFile}`),
-  )
-  assert(sourceIndex >= 0, `${manifest.name} (${exportKey}): missing source ${sourceFile}`)
+async function readLinkedMap(file, javascript) {
+  const reference = javascript.match(/\/\/# sourceMappingURL=(\S+)\s*$/)?.[1]
+  assert(reference, `${file}: missing linked JavaScript source map`)
+  assertRelativePath(reference, `${file} sourceMappingURL`)
+  const map = JSON.parse(await readFile(join(dirname(file), reference), 'utf8'))
+  assert.equal(map.version, 3)
+  assert.equal(typeof map.mappings, 'string')
+  assert(Array.isArray(map.sources))
+  assert(Array.isArray(map.sourcesContent))
+  assert.equal(map.sourcesContent.length, map.sources.length)
+  if (map.sourceRoot) assertRelativePath(map.sourceRoot, `${file} sourceRoot`)
+  for (const [index, source] of map.sources.entries()) {
+    assertRelativePath(source, `${file} source`)
+    assert(map.sourcesContent[index]?.trim(), `${file}: missing embedded source for ${source}`)
+  }
+  return map
+}
+
+async function checkMapping(targetJs, targetMap, sourceIndex, sourceFile, functionName) {
+  const offset = targetJs.search(new RegExp(`function ${functionName}[0-9]*\\(`))
   const original = await readFile(join(root, 'packages/hotkeys', sourceFile), 'utf8')
   assert.equal(targetMap.sourcesContent[sourceIndex], original)
-  assert(offset >= 0, `${manifest.name} (${exportKey}): missing generated function ${functionName}`)
+  assert(offset >= 0, `Missing generated function ${functionName}`)
   const decoded = new SourceMap(targetMap)
   const prefix = targetJs.slice(0, offset + 'function '.length)
   const line = prefix.split('\n').length - 1
@@ -84,7 +86,7 @@ async function checkSourceMap(directory, manifest, exportKey, sourceFile, functi
   const entry = decoded.findEntry(line, column)
   assert.equal(entry.originalSource, targetMap.sources[sourceIndex])
   const originalLine = original.split('\n')[entry.originalLine]
-  assert(originalLine?.includes(`function ${functionName}(`))
+  assert.match(originalLine ?? '', new RegExp(`function ${functionName}[<(]`))
   assert(entry.originalColumn >= 0 && entry.originalColumn < originalLine.length)
 }
 
@@ -122,8 +124,12 @@ try {
   assert.equal(manifest.version, artifact.version)
   assert.equal(manifest.scripts, undefined)
   assert.equal(manifest.devDependencies, undefined)
-  await readFile(join(pkgDir, manifest.exports['.'].types))
-  await readFile(join(pkgDir, manifest.exports['./react'].types))
+  const consumerRequire = createRequire(join(temporary, 'package.json'))
+  for (const subpath of ['.', './react', './terminal', './adapter']) {
+    await readFile(join(pkgDir, manifest.exports[subpath].types))
+    const name = subpath === '.' ? manifest.name : manifest.name + subpath.slice(1)
+    assert.equal(consumerRequire.resolve(name), join(pkgDir, manifest.exports[subpath].import))
+  }
   for (const [exportKey, sourceFile, fn] of sourceMapSamples) {
     await checkSourceMap(pkgDir, manifest, exportKey, sourceFile, fn)
   }
@@ -317,7 +323,7 @@ for (const Recorder of [HotkeyRecorder, HotkeySequenceRecorder]) {
     recorder.cancel()
     assert.equal(cancellations, 1, 'Replacing options must remove omitted callbacks')
   } finally {
-    recorder.destroy()
+    recorder.dispose()
   }
 }
 `
@@ -329,9 +335,13 @@ for (const Recorder of [HotkeyRecorder, HotkeySequenceRecorder]) {
   execFileSync(process.execPath, ['batch-consumer.mjs'], { cwd: temporary, stdio: 'inherit' })
   await writeFile(
     join(temporary, 'consumer.ts'),
-    `import { createDispatcher, createHotkeyRegistry, formatHotkeySequence, HotkeyRecorder, HotkeySequenceRecorder, parseHotkey } from '@shaulavo/hotkeys'
+    `import { createDispatcher, createHotkeyRegistry, normalizeHotkey, HotkeyRecorder, HotkeySequenceRecorder, parseHotkey } from '@shaulavo/hotkeys'
 import { useHotkey, useHotkeys, useHotkeySequence, useHotkeySequences } from '@shaulavo/hotkeys/react'
-import type { HotkeySequence } from '@shaulavo/hotkeys'
+import type { Hotkey } from '@shaulavo/hotkeys'
+import { createTerminalDispatcher } from '@shaulavo/hotkeys/terminal'
+import { trieStep } from '@shaulavo/hotkeys/adapter'
+createTerminalDispatcher()
+void trieStep
 import type { ReactHotkeySequenceRecorder, UseHotkeyDefinition, UseHotkeySequenceDefinition } from '@shaulavo/hotkeys/react'
 parseHotkey('Mod+S', 'linux')
 createDispatcher({ platform: 'linux', keymap: [] })
@@ -340,7 +350,7 @@ useHotkey('Mod+S', () => {})
 const registration = createHotkeyRegistry().register('Mod+S', () => {}, { platform: 'linux' })
 registration.setOptions({ platform: 'mac' })
 registration.replaceOptions({ target: document })
-registration.unregister()
+registration.dispose()
 const recorder = new HotkeyRecorder({ onRecord: () => {} })
 recorder.setOptions({ ignoreInputs: false })
 recorder.replaceOptions({ onRecord: () => {} })
@@ -351,16 +361,16 @@ sequenceRecorder.replaceOptions({ onRecord: () => {} })
 const readonlySequence = ['Control+[KeyK]', 'Control+[KeyC]'] as const
 const readonlyHotkeys = [{ hotkey: 'Escape', callback: () => {} }] as const
 const readonlySequences = [{ sequence: ['G', 'G'], callback: () => {} }] as const
-formatHotkeySequence(readonlySequence)
+normalizeHotkey(readonlySequence)
 useHotkeySequence(readonlySequence, () => {})
 useHotkeys(readonlyHotkeys)
 useHotkeySequences(readonlySequences)
 
-const mutableSequence: HotkeySequence = ['G', 'G']
+const mutableSequence: Hotkey[] = ['G', 'G']
 const mutableHotkeys: Array<UseHotkeyDefinition> = [{ hotkey: 'Escape', callback: () => {} }]
 const mutableSequences: Array<UseHotkeySequenceDefinition> = [{ sequence: mutableSequence, callback: () => {} }]
-mutableSequences[0]!.sequence.push('Escape')
-formatHotkeySequence(mutableSequence)
+mutableSequence.push('Escape')
+normalizeHotkey(mutableSequence)
 useHotkeySequence(mutableSequence, () => {})
 useHotkeys(mutableHotkeys)
 useHotkeySequences(mutableSequences)
@@ -387,6 +397,8 @@ recordedSequence.push('Escape')
         module,
         '--target',
         'es2023',
+        '--lib',
+        'ES2023,ESNext.Disposable,DOM,DOM.Iterable',
         'consumer.ts',
         'batch-consumer.ts',
       ],

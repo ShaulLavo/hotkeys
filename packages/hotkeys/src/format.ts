@@ -6,17 +6,13 @@ import {
   PUNCTUATION_KEY_DISPLAY_LABELS,
   WINDOWS_MODIFIER_LABELS,
 } from './display-labels.js'
-import {
-  MODIFIER_ALIASES,
-  MODIFIER_ORDER,
-  PUNCTUATION_CODE_MAP,
-  normalizeKeyName,
-} from './constants.js'
-import { detectPlatform } from './platform.js'
-import { assertLogicalKey, splitHotkeyParts } from './_keyboard-event.js'
-import { isModifierKey, normalizeHotkeyFromParsed, normalizeRegisterableHotkey } from './parse.js'
+import { MODIFIER_ORDER, PUNCTUATION_CODE_MAP, normalizeKeyName } from './constants.js'
+import { detectPlatform, resolveModifier } from './platform.js'
+import { assertLogicalKey } from './_keyboard-event.js'
+import { parseHotkey } from './parse.js'
+import { isShortcutSequence, modifierAlias, requireShortcut } from './shortcut.js'
 import type { CanonicalModifier } from './key.types.js'
-import type { Hotkey, ParsedHotkey, RegisterableHotkey } from './hotkey.types.js'
+import type { Hotkey, HotkeyInput, ParsedHotkey, RegisterableHotkey } from './hotkey.types.js'
 
 /**
  * Joins stored sequence steps with spaces, preserving physical code tokens.
@@ -64,7 +60,7 @@ export function formatHotkey(parsed: ParsedHotkey): string {
   return parts.join('+')
 }
 
-export type DisplayHotkey = RegisterableHotkey | ParsedHotkey | (string & {})
+export type DisplayHotkey = HotkeyInput | ParsedHotkey | (string & {})
 
 function formatModifierSegment(
   modifier: CanonicalModifier | 'Mod',
@@ -127,50 +123,57 @@ export function formatForDisplay(
   const modifierSymbols = typeof symbols === 'boolean' ? symbols : (symbols.modifiers ?? true)
   const keySymbols = typeof symbols === 'boolean' ? symbols : (symbols.keys ?? true)
   const separator = options.separatorToken ?? (platform === 'mac' && modifierSymbols ? ' ' : '+')
-  const normalized =
-    typeof hotkey === 'object' && 'modifiers' in hotkey
-      ? normalizeHotkeyFromParsed(hotkey, platform)
-      : normalizeRegisterableHotkey(hotkey as RegisterableHotkey, platform)
-  const segments = splitHotkeyParts(normalized)
-  if (platform === 'mac') {
-    // Canonical registration puts Mod first; display resolves it to Command.
-    const modifierIndex = (segment: string) => {
-      const index = MODIFIER_ORDER.indexOf(
-        (segment === 'Mod' ? 'Meta' : segment) as CanonicalModifier,
-      )
-      return index === -1 ? MODIFIER_ORDER.length : index
-    }
-    segments.sort((a, b) => modifierIndex(a) - modifierIndex(b))
-  }
-  const parts = segments.map((segment) => {
-    if (isModifierKey(segment)) {
-      const modifier = (MODIFIER_ALIASES[segment] ?? MODIFIER_ALIASES[segment.toLowerCase()]) as
-        | CanonicalModifier
-        | 'Mod'
-      return formatModifierSegment(modifier, platform, modifierSymbols)
-    }
-    const code = /^\[([A-Za-z][A-Za-z0-9]*)\]$/.exec(segment)?.[1]
-    const label = options.keyLabels?.[code ?? segment]
-    if (label !== undefined) return label
-    // Shorten conventional position labels for display only; stored identity is unchanged.
-    const numpad = code?.startsWith('Numpad') ?? false
-    let displayKey = code ?? segment
-    const mappedKey = code ? options.layoutMap?.get(code) : undefined
-    if (mappedKey) {
-      // Layout entries are logical labels; normalize their case and whitespace names.
-      displayKey = normalizeKeyName(mappedKey)
-    } else if (code) {
-      if (/^Key[A-Z]$/.test(code)) displayKey = code.slice(3)
-      else if (/^Digit[0-9]$/.test(code)) displayKey = code.slice(5)
-      else if (numpad) displayKey = code.slice(6)
-      else displayKey = PUNCTUATION_CODE_MAP[code] ?? code
-    }
-    const labels = keySymbols ? KEY_DISPLAY_SYMBOLS : PUNCTUATION_KEY_DISPLAY_LABELS
-    const display = (labels as Partial<Record<string, string>>)[displayKey] ?? displayKey
-    // Retain numpad identity while making longer names such as MemoryAdd readable.
-    return numpad ? `Numpad ${display.replace(/([a-z])([A-Z])/g, '$1 $2')}` : display
+  const strokes = displayStrokes(hotkey)
+
+  const labels = strokes.map((stroke) => {
+    const parsed = parseHotkey(stroke, platform)
+    const modifier = parsed.key && modifierAlias(parsed.key)
+    const modifiers = modifier
+      ? parsed.modifiers.concat(resolveModifier(modifier, platform))
+      : parsed.modifiers
+    const ordered =
+      modifier && platform === 'mac'
+        ? modifiers.toSorted((a, b) => MODIFIER_ORDER.indexOf(a) - MODIFIER_ORDER.indexOf(b))
+        : modifiers
+    const parts = ordered.map((value) => formatModifierSegment(value, platform, modifierSymbols))
+    if (!modifier) parts.push(formatKeyLabel(parsed, options, keySymbols))
+    return parts
   })
-  return options.parts ? parts : parts.join(separator)
+  return options.parts ? labels.flat() : labels.map((parts) => parts.join(separator)).join(' ')
+}
+
+function displayStrokes(hotkey: DisplayHotkey) {
+  if (isShortcutSequence(hotkey)) return hotkey
+  if (typeof hotkey === 'string' && /\s/.test(hotkey.trim())) return requireShortcut(hotkey)
+  return [hotkey]
+}
+
+function formatKeyLabel(
+  parsed: ParsedHotkey,
+  options: FormatDisplayOptions,
+  keySymbols: boolean,
+): string {
+  const code = parsed.code
+  const segment = parsed.key ?? ''
+  const label = options.keyLabels?.[code ?? segment]
+  if (label !== undefined) return label
+  // Shorten conventional position labels for display only; stored identity is unchanged.
+  const numpad = code?.startsWith('Numpad') ?? false
+  let displayKey = code ?? segment
+  const mappedKey = code ? options.layoutMap?.get(code) : undefined
+  if (mappedKey) {
+    // Layout entries are logical labels; normalize their case and whitespace names.
+    displayKey = normalizeKeyName(mappedKey)
+  } else if (code) {
+    if (/^Key[A-Z]$/.test(code)) displayKey = code.slice(3)
+    else if (/^Digit[0-9]$/.test(code)) displayKey = code.slice(5)
+    else if (numpad) displayKey = code.slice(6)
+    else displayKey = PUNCTUATION_CODE_MAP[code] ?? code
+  }
+  const labels = keySymbols ? KEY_DISPLAY_SYMBOLS : PUNCTUATION_KEY_DISPLAY_LABELS
+  const display = (labels as Partial<Record<string, string>>)[displayKey] ?? displayKey
+  // Retain numpad identity while making longer names such as MemoryAdd readable.
+  return numpad ? `Numpad ${display.replace(/([a-z])([A-Z])/g, '$1 $2')}` : display
 }
 
 /**

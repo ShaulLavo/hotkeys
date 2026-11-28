@@ -4,9 +4,8 @@ import {
   keyInputFromKeyboardEvent,
   matchesKeyInput,
   matchesKeyboardEvent,
-  normalizeHotkeyFromKeyInput,
-  parseKeyInput,
 } from '../src'
+import { normalizeHotkeyFromKeyInput, parseKeyInput } from '../src/parse.js'
 import type { Hotkey, KeyboardEventLike } from '../src'
 
 function keyboardEvent(

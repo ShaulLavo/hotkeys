@@ -1,36 +1,70 @@
-import { expect, expectTypeOf, it } from 'vitest'
-import * as hotkeys from '../src'
-import type {
-  KeyboardEventMatch,
-  KeyInput,
-  NonPunctuationKey,
-  SingleModifierHotkey,
-  DisplayHotkey,
-  MultiHotkeyHandler,
-  HotkeyRegistrationView,
-  Target,
-} from '../src'
+import coreSource from '../src/index.ts?raw'
+import adapterSource from '../src/adapter/index.ts?raw'
+import terminalSource from '../src/terminal/index.ts?raw'
+import { expect, it } from 'vitest'
+import * as hotkeys from '../src/index.js'
+import * as adapter from '../src/adapter/index.js'
+import * as terminal from '../src/terminal/index.js'
 
-it('exports shared types without exposing internal runtime helpers', () => {
-  expectTypeOf<KeyboardEventMatch['score']>().toEqualTypeOf<0 | 1 | 2 | 3>()
-  expectTypeOf<KeyInput['code']>().toBeString()
-  expectTypeOf<'F24'>().toExtend<NonPunctuationKey>()
-  expectTypeOf<'Mod+[KeyS]'>().toExtend<SingleModifierHotkey>()
-  expectTypeOf<'Mod+[KeyS]'>().toExtend<DisplayHotkey>()
-  expectTypeOf<{}>().toExtend<MultiHotkeyHandler>()
-  expectTypeOf<HotkeyRegistrationView['target']>().toEqualTypeOf<Target>()
-  for (const name of [
-    'chordRejection',
-    'matchKeyboardEvent',
-    'matchKeyInput',
-    'normalizeKeyboardEvent',
-    'beginRecording',
-    'hotkeyChordFromKeydown',
-    'isInputElement',
-    'optionsEqual',
-  ])
-    expect(hotkeys).not.toHaveProperty(name)
-  expect(hotkeys.matchesKeyboardEvent).toBeTypeOf('function')
-  expect(hotkeys.parseRegisterableHotkey).toBeTypeOf('function')
-  expect(hotkeys.areHotkeysEqual).toBeTypeOf('function')
+it.each([
+  [
+    'index',
+    hotkeys,
+    coreSource,
+    [
+      'HotkeyRecorder',
+      'HotkeySequenceRecorder',
+      'KeyStateTracker',
+      'areHotkeysEqual',
+      'compileKeymap',
+      'createBrowserDispatcher',
+      'createDispatcher',
+      'createHotkeyRegistry',
+      'createKeyContext',
+      'createKeyInput',
+      'detectPlatform',
+      'explainKeymap',
+      'findHotkeyConflicts',
+      'formatForDisplay',
+      'getHotkeyRegistry',
+      'getKeyStateTracker',
+      'isModifierKey',
+      'keyInputFromKeyboardEvent',
+      'matchesHeldModifiers',
+      'matchesKeyInput',
+      'matchesKeyboardEvent',
+      'normalizeHotkey',
+      'normalizeKeyName',
+      'parseContextPredicate',
+      'parseHotkey',
+      'parseKeyContext',
+      'parseShortcut',
+      'registerHotkey',
+    ],
+  ],
+  [
+    'adapter/index',
+    adapter,
+    adapterSource,
+    [
+      'attachKeyListeners',
+      'browserKeyEffects',
+      'buildKeymapTrie',
+      'createChordRuntime',
+      'evaluatePredicate',
+      'predicateDepth',
+      'replayTextInput',
+      'resolveKeymapNode',
+      'trieStep',
+    ],
+  ],
+  [
+    'terminal/index',
+    terminal,
+    terminalSource,
+    ['createTerminalDispatcher', 'keyInputFromTerminalKey', 'terminalKeyEffects'],
+  ],
+] as const)('curates the %s exports', (_path, exports, source, expected) => {
+  expect(Object.keys(exports).sort()).toEqual(expected.toSorted())
+  expect(source).not.toMatch(/export\s*\*/)
 })

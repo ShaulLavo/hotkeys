@@ -2,14 +2,9 @@
 // Zed's NoAction is `command: null`, Unbind is `unbind`, and its meta indexes map to sources:
 // USER → 'user', VIM → 'pack', BASE → 'base', DEFAULT → 'default'.
 import { describe, expect, it } from 'vitest'
-import {
-  bindingsForInput,
-  compileKeymap,
-  createKeyInput,
-  parseKeyContext,
-  resolveKeymapNode,
-  trieStep,
-} from '../../src'
+import { bindingsForInput } from '../../src/dispatch/keymap.js'
+import { compileKeymap, createKeyInput, parseKeyContext } from '../../src'
+import { resolveKeymapNode, trieStep } from '../../src/adapter/index.js'
 import type { KeymapEntry } from '../../src'
 
 function strokeCode(key: string): string {

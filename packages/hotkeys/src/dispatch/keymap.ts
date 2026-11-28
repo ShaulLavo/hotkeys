@@ -1,7 +1,9 @@
-import { normalizeRegisterableHotkey } from '../parse.js'
+import type { AnyCommands, CommandArgs, CommandMap, CommandName } from './commands.js'
+import { requireShortcut } from '../shortcut.js'
+import type { HotkeyInput } from '../hotkey.types.js'
+import { normalizeHotkey } from '../parse.js'
 import { buildKeymapTrie, trieStep } from '../chords/trie.js'
 import { parseContextPredicate, predicateDepth } from '../context/predicate.js'
-import type { RegisterableHotkey } from '../hotkey.types.js'
 import type { KeyInput } from '../key-input.js'
 import type { KeyContext } from '../context/key-context.js'
 import type { ContextPredicate } from '../context/predicate.js'
@@ -21,40 +23,45 @@ export type BindingKeys = KeyChord | string
  * A key→command pair, active where `context` matches the focus path. `command: null`
  * removes equal and weaker sources' bindings for these keys where it matches.
  */
-export type Binding = {
-  readonly keys: BindingKeys
-  readonly command: string | null
-  readonly args?: unknown
+type BindingKey = {
+  readonly keys: HotkeyInput | (string & {})
   readonly context?: string
   readonly source?: BindingSource
-  /** False keeps the browser default even when the command runs; true prevents it even when declined. */
+}
+
+type BindingEffect = {
   readonly preventDefault?: boolean
   readonly stopPropagation?: boolean
 }
-/** Removes one key→command pair where `context` matches, leaving other commands on the keys. */
-export type Unbinding = {
-  readonly keys: BindingKeys
-  readonly unbind: string
-  readonly context?: string
-  readonly source?: BindingSource
-}
-export type KeymapEntry = Binding | Unbinding
 
-/** A table entry after parsing, carried as the trie payload. */
-export type CompiledBinding = {
-  readonly entry: KeymapEntry
-  readonly command: string | null
-  readonly unbind: string | null
+export type Binding<Commands extends CommandMap = AnyCommands> = BindingKey &
+  BindingEffect &
+  (
+    | { readonly command: null; readonly args?: never }
+    | {
+        [Name in CommandName<Commands>]: { readonly command: Name } & CommandArgs<Commands[Name]>
+      }[CommandName<Commands>]
+  )
+export type Unbinding<Commands extends CommandMap = AnyCommands> = BindingKey & {
+  readonly unbind: CommandName<Commands>
+}
+export type KeymapEntry<Commands extends CommandMap = AnyCommands> =
+  | Binding<Commands>
+  | Unbinding<Commands>
+
+export type CompiledBinding<Commands extends CommandMap = AnyCommands> = {
+  readonly entry: KeymapEntry<Commands>
+  readonly command: CommandName<Commands> | null
+  readonly unbind: CommandName<Commands> | null
   readonly predicate: ContextPredicate | undefined
   readonly rank: number
   readonly index: number
-  /** Normalized chord, for comparing entries on the same keys. */
   readonly chord: string
 }
-export type CompiledKeymap = {
+export type CompiledKeymap<Commands extends CommandMap = AnyCommands> = {
   readonly platform: KeymapPlatform
-  readonly bindings: readonly KeymapBinding<CompiledBinding>[]
-  readonly root: KeymapNode<CompiledBinding>
+  readonly bindings: readonly KeymapBinding<CompiledBinding<Commands>>[]
+  readonly root: KeymapNode<CompiledBinding<Commands>>
 }
 
 const SOURCE_RANK: Readonly<Record<BindingSource, number>> = {
@@ -65,20 +72,20 @@ const SOURCE_RANK: Readonly<Record<BindingSource, number>> = {
 }
 
 /** Parses the table once: chords, predicates and ranks; linear in the number of strokes. */
-export function compileKeymap(
-  entries: readonly KeymapEntry[],
+export function compileKeymap<Commands extends CommandMap = AnyCommands>(
+  entries: readonly KeymapEntry<Commands>[],
   platform: KeymapPlatform,
-): CompiledKeymap {
-  const bindings = entries.map((entry, index) => compileEntry(entry, index, platform))
+): CompiledKeymap<Commands> {
+  const bindings = entries.map((entry, index) => compileEntry<Commands>(entry, index, platform))
   return { platform, bindings, root: buildKeymapTrie(bindings, platform) }
 }
 
-function compileEntry(
-  entry: KeymapEntry,
+function compileEntry<Commands extends CommandMap>(
+  entry: KeymapEntry<Commands>,
   index: number,
   platform: KeymapPlatform,
-): KeymapBinding<CompiledBinding> {
-  const chord = toChord(entry.keys)
+): KeymapBinding<CompiledBinding<Commands>> {
+  const chord = requireShortcut(entry.keys, `Keymap entry ${index}`)
   const isUnbind = 'unbind' in entry
   return {
     chord,
@@ -93,52 +100,52 @@ function compileEntry(
       predicate: entry.context === undefined ? undefined : parseContextPredicate(entry.context),
       rank: SOURCE_RANK[entry.source ?? 'user'],
       index,
-      chord: chord.map((stroke) => normalizeRegisterableHotkey(stroke, platform)).join(' '),
+      chord: chord
+        .map((stroke) => normalizeHotkey(stroke, { mode: 'resolved', platform }))
+        .join(' '),
     },
   }
 }
 
-function toChord(keys: BindingKeys): KeyChord {
-  if (typeof keys !== 'string') return keys
-  const strokes = keys.trim().split(/\s+/) as RegisterableHotkey[]
-  return strokes as unknown as KeyChord
+type Ranked<Commands extends CommandMap> = {
+  readonly depth: number
+  readonly binding: KeymapBinding<CompiledBinding<Commands>>
 }
-
-type Ranked = { readonly depth: number; readonly binding: KeymapBinding<CompiledBinding> }
 
 /**
  * Zed's `bindings_for_input` for one trie node: the commands to try in order, and how many
  * longer chords keep the input pending. Candidates rank by the deepest context their predicate
  * matches, then source, then table order (later first).
  */
-export function resolveKeymapNode(
-  node: KeymapNode<CompiledBinding>,
+export function resolveKeymapNode<Commands extends CommandMap>(
+  node: KeymapNode<CompiledBinding<Commands>>,
   stack: readonly KeyContext[],
-  isAvailable: (binding: CompiledBinding) => boolean = always,
-): KeymapSelection<CompiledBinding> {
+  isAvailable: (binding: CompiledBinding<Commands>) => boolean = always,
+): KeymapSelection<CompiledBinding<Commands>> {
   const bindings = effectiveBindings(node.candidates, stack, isAvailable)
   const first = bindings[0]?.payload.index ?? -1
   return { bindings, pending: pendingChords(node, stack, first, isAvailable) }
 }
 
-function effectiveBindings(
-  candidates: readonly KeymapBinding<CompiledBinding>[],
+export function effectiveBindings<Commands extends CommandMap>(
+  candidates: readonly KeymapBinding<CompiledBinding<Commands>>[],
   stack: readonly KeyContext[],
-  isAvailable: (binding: CompiledBinding) => boolean,
-): KeymapBinding<CompiledBinding>[] {
-  const ranked: Ranked[] = []
+  isAvailable: (binding: CompiledBinding<Commands>) => boolean,
+  onRemoval?: RemovalReporter<Commands>,
+): KeymapBinding<CompiledBinding<Commands>>[] {
+  const ranked: Ranked<Commands>[] = []
   for (const binding of candidates) {
     const depth = bindingDepth(binding.payload, stack, isAvailable)
     if (depth !== null) ranked.push({ depth, binding })
   }
   ranked.sort(compareRanked)
-  return actionable(ranked)
+  return actionable(ranked, onRemoval)
 }
 
-function bindingDepth(
-  binding: CompiledBinding,
+function bindingDepth<Commands extends CommandMap>(
+  binding: CompiledBinding<Commands>,
   stack: readonly KeyContext[],
-  isAvailable: (binding: CompiledBinding) => boolean,
+  isAvailable: (binding: CompiledBinding<Commands>) => boolean,
 ): number | null {
   return isAvailable(binding) ? predicateDepth(binding.predicate, stack) : null
 }
@@ -147,7 +154,10 @@ function always(): boolean {
   return true
 }
 
-function compareRanked(a: Ranked, b: Ranked): number {
+function compareRanked<Commands extends CommandMap>(
+  a: Ranked<Commands>,
+  b: Ranked<Commands>,
+): number {
   return (
     b.depth - a.depth ||
     b.binding.payload.rank - a.binding.payload.rank ||
@@ -155,38 +165,53 @@ function compareRanked(a: Ranked, b: Ranked): number {
   )
 }
 
-function actionable(ranked: readonly Ranked[]): KeymapBinding<CompiledBinding>[] {
-  const bindings: KeymapBinding<CompiledBinding>[] = []
-  const unbound: CompiledBinding[] = []
-  let nullRank = -1
+type RemovalReporter<Commands extends CommandMap> = (
+  entry: CompiledBinding<Commands>,
+  blocker: CompiledBinding<Commands>,
+) => void
+
+function actionable<Commands extends CommandMap>(
+  ranked: readonly Ranked<Commands>[],
+  onRemoval?: RemovalReporter<Commands>,
+): KeymapBinding<CompiledBinding<Commands>>[] {
+  const bindings: KeymapBinding<CompiledBinding<Commands>>[] = []
+  const unbound: CompiledBinding<Commands>[] = []
+  let clear: CompiledBinding<Commands> | undefined
   for (const { binding } of ranked) {
     const { payload } = binding
     if (payload.command === null && payload.unbind === null) {
-      nullRank = Math.max(nullRank, payload.rank)
+      if (!clear || payload.rank > clear.rank) clear = payload
       continue
     }
-    if (payload.rank <= nullRank) continue
+    if (clear && payload.rank <= clear.rank) {
+      onRemoval?.(payload, clear)
+      continue
+    }
     if (payload.unbind !== null) {
       unbound.push(payload)
       continue
     }
-    if (unbound.some((removal) => removes(removal, payload))) continue
-    bindings.push(binding)
+    const blocker = unbound.find((removal) => removes(removal, payload))
+    if (blocker) onRemoval?.(payload, blocker)
+    if (!blocker) bindings.push(binding)
   }
   return bindings
 }
 
-function removes(removal: CompiledBinding, binding: CompiledBinding): boolean {
+function removes<Commands extends CommandMap>(
+  removal: CompiledBinding<Commands>,
+  binding: CompiledBinding<Commands>,
+): boolean {
   return removal.chord === binding.chord && removal.unbind === binding.command
 }
 
 // Resolve each descendant's complete candidate set before applying the exact-prefix cutoff.
 // An earlier removal can still suppress a later continuation; each surviving path counts once.
-function pendingChords(
-  node: KeymapNode<CompiledBinding>,
+function pendingChords<Commands extends CommandMap>(
+  node: KeymapNode<CompiledBinding<Commands>>,
   stack: readonly KeyContext[],
   firstIndex: number,
-  isAvailable: (binding: CompiledBinding) => boolean,
+  isAvailable: (binding: CompiledBinding<Commands>) => boolean,
 ): number {
   if (node.next.size === 0) return 0
   let count = 0
@@ -200,20 +225,20 @@ function pendingChords(
   return count
 }
 
-function appendChildNodes(
-  remaining: KeymapNode<CompiledBinding>[],
-  edges: readonly (KeymapEdge<CompiledBinding> | undefined)[],
+function appendChildNodes<Commands extends CommandMap>(
+  remaining: KeymapNode<CompiledBinding<Commands>>[],
+  edges: readonly (KeymapEdge<CompiledBinding<Commands>> | undefined)[],
 ): void {
   for (const edge of edges) {
     if (edge) remaining.push(edge.node)
   }
 }
 
-function hasPendingBinding(
-  candidates: readonly KeymapBinding<CompiledBinding>[],
+function hasPendingBinding<Commands extends CommandMap>(
+  candidates: readonly KeymapBinding<CompiledBinding<Commands>>[],
   stack: readonly KeyContext[],
   firstIndex: number,
-  isAvailable: (binding: CompiledBinding) => boolean,
+  isAvailable: (binding: CompiledBinding<Commands>) => boolean,
 ): boolean {
   // Without removals, ranking cannot change reachability; avoid sorting the whole candidate set.
   if (!candidates.some((binding) => binding.payload.command === null)) {
@@ -228,12 +253,12 @@ function hasPendingBinding(
 }
 
 /** What a sequence of keys resolves to under a context stack, for settings and tests. */
-export function bindingsForInput(
-  keymap: CompiledKeymap,
+export function bindingsForInput<Commands extends CommandMap>(
+  keymap: CompiledKeymap<Commands>,
   inputs: readonly KeyInput[],
   stack: readonly KeyContext[],
-): { readonly bindings: readonly CompiledBinding[]; readonly pending: boolean } {
-  let node: KeymapNode<CompiledBinding> | null = keymap.root
+): { readonly bindings: readonly CompiledBinding<Commands>[]; readonly pending: boolean } {
+  let node: KeymapNode<CompiledBinding<Commands>> | null = keymap.root
   for (const input of inputs) {
     node = trieStep(node, input)?.node ?? null
     if (!node) return { bindings: [], pending: false }

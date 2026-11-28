@@ -2,41 +2,23 @@ import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 
 const root = join(import.meta.dirname, '..')
-rmSync(join(root, 'dist'), { recursive: true, force: true })
+const outdir = join(root, 'dist')
+rmSync(outdir, { recursive: true, force: true })
 
-const core = await Bun.build({
-  entrypoints: [join(root, 'src/index.ts')],
-  outdir: join(root, 'dist'),
+const build = await Bun.build({
+  entrypoints: ['index.ts', 'react/index.ts', 'terminal/index.ts', 'adapter/index.ts'].map(
+    (entry) => join(root, 'src', entry),
+  ),
+  root: join(root, 'src'),
+  outdir,
   target: 'browser',
   format: 'esm',
   sourcemap: 'linked',
   packages: 'external',
+  splitting: true,
+  external: ['@shaulavo/hotkeys'],
 })
-if (!core.success) {
-  for (const log of core.logs) console.error(log)
-  process.exit(1)
-}
-
-const react = await Bun.build({
-  entrypoints: [join(root, 'src/react/index.ts')],
-  outdir: join(root, 'dist/react'),
-  target: 'browser',
-  format: 'esm',
-  sourcemap: 'linked',
-  packages: 'external',
-  plugins: [
-    {
-      name: 'external-core-self-reference',
-      setup(build) {
-        build.onResolve({ filter: /^@shaulavo\/hotkeys$/ }, () => ({
-          path: '@shaulavo/hotkeys',
-          external: true,
-        }))
-      },
-    },
-  ],
-})
-if (!react.success) {
-  for (const log of react.logs) console.error(log)
+if (!build.success) {
+  for (const log of build.logs) console.error(log)
   process.exit(1)
 }

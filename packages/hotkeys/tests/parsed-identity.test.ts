@@ -1,15 +1,13 @@
 import { afterEach, expect, it, vi } from 'vitest'
+import { getHotkeyRegistry, HotkeyRecorder, parseHotkey } from '../src'
+import { createHotkeyHandler } from '../src/match.js'
+import { formatHotkey } from '../src/format.js'
 import {
-  getHotkeyRegistry,
-  HotkeyRecorder,
-  createHotkeyHandler,
-  formatHotkey,
   hasNonModifierKey,
   normalizeHotkeyFromParsed,
-  parseHotkey,
-  parseKeyboardEvent,
   rawHotkeyToParsedHotkey,
-} from '../src'
+} from '../src/parse.js'
+import { parseKeyboardEvent } from '../src/_browser-parse.js'
 import type { HotkeyRecorderOptions, ParsedHotkey, ParsedModifiers } from '../src'
 
 const modifiers: ParsedModifiers = {
@@ -69,7 +67,7 @@ it('passes only physical identity to recorder validation', () => {
       parsedHotkey: { ...modifiers, code: 'KeyS' },
     })
   } finally {
-    recorder.destroy()
+    recorder.dispose()
   }
 })
 it('keeps physical identity in standalone handler context', () => {
@@ -78,8 +76,9 @@ it('keeps physical identity in standalone handler context', () => {
     platform: 'mac',
   })(new KeyboardEvent('keydown', { key: 'ß', code: 'KeyS', altKey: true }))
   expect(callback).toHaveBeenCalledWith(expect.any(KeyboardEvent), {
-    hotkey: 'Alt+[KeyS]',
-    parsedHotkey: { ...modifiers, code: 'KeyS' },
+    shortcut: 'Alt+[KeyS]',
+    stroke: { ...modifiers, code: 'KeyS' },
+    strokes: [{ ...modifiers, code: 'KeyS' }],
   })
 })
 it('synthesizes code rather than inventing a character when triggering registrations', () => {
@@ -94,7 +93,7 @@ it('synthesizes code rather than inventing a character when triggering registrat
   for (const callback of [single, sequence]) {
     expect(callback.mock.calls[0]![0].code).toBe('KeyS')
     expect(callback.mock.calls[0]![0].key).toBe('')
-    expect(callback.mock.calls[0]![1].parsedHotkey).not.toHaveProperty('key')
+    expect(callback.mock.calls[0]![1].stroke).not.toHaveProperty('key')
   }
 })
 it('recognizes physical action keys and preserves Escape input defaults', () => {

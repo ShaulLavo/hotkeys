@@ -1,6 +1,6 @@
 import { LETTER_KEYS, NUMBER_KEYS, PUNCTUATION_CODE_MAP } from '../constants.js'
 import { allowsCodeFallback, allowsImplicitShift } from '../_keyboard-event.js'
-import { normalizeRegisterableHotkey, parseHotkey, rawHotkeyToParsedHotkey } from '../parse.js'
+import { normalizeHotkey, parseHotkey } from '../parse.js'
 import type { KeyInput } from '../key-input.js'
 import type { KeymapBinding, KeymapPlatform } from './types.js'
 
@@ -38,15 +38,13 @@ function insertBinding<Payload>(
   let node = root
   for (const stroke of binding.chord) {
     node.descendants.push(binding)
-    const parsed =
-      typeof stroke === 'string'
-        ? parseHotkey(stroke, platform)
-        : rawHotkeyToParsedHotkey(stroke, platform)
+    const parsed = parseHotkey(stroke, platform)
     const modifiers = modifierMask(parsed.alt, parsed.ctrl, parsed.meta, parsed.shift)
     const strokeKey = parsed.code === undefined ? parsed.key : physicalSlot(parsed.code)
     const edges = node.next.get(strokeKey) ?? []
     let edge = edges[modifiers]
-    if (!edge) edge = { keys: normalizeRegisterableHotkey(stroke, platform), node: emptyNode() }
+    if (!edge)
+      edge = { keys: normalizeHotkey(parsed, { mode: 'resolved', platform }), node: emptyNode() }
     edges[modifiers] = edge
     node.next.set(strokeKey, edges)
     node = edge.node
@@ -61,21 +59,23 @@ function insertBinding<Payload>(
 export function trieStep<Payload>(
   node: KeymapNode<Payload>,
   input: Pick<KeyInput, 'key' | 'code' | 'modifiers'>,
+  accepts: (edge: KeymapEdge<Payload>) => boolean = () => true,
 ): KeymapEdge<Payload> | null {
   const { alt, ctrl, meta, shift, altGraph } = input.modifiers
   // AltGr synthesizes Control+Alt to type a glyph; the glyph is the stroke.
   const modifiers = modifierMask(alt && !altGraph, ctrl && !altGraph, meta, shift)
   const printed = node.next.get(input.key)
-  const edge =
-    printed?.[modifiers] ??
-    (input.code ? node.next.get(physicalSlot(input.code))?.[modifiers] : undefined)
-  if (edge) return edge
-  const implicit = shift ? printed?.[modifiers & ~8] : undefined
-  if (implicit && allowsImplicitShift(input.key)) return implicit
+  const exact = printed?.[modifiers]
+  if (exact && accepts(exact)) return exact
+  const physical = input.code ? node.next.get(physicalSlot(input.code))?.[modifiers] : undefined
+  if (physical && accepts(physical)) return physical
+  const implicit = shift && allowsImplicitShift(input.key) ? printed?.[modifiers & ~8] : undefined
+  if (implicit && accepts(implicit)) return implicit
   if (!allowsCodeFallback(input)) return null
-  const physical = PHYSICAL_KEY_NAMES.get(input.code)
-  if (!physical) return null
-  return node.next.get(physical)?.[modifiers] ?? null
+  const fallbackKey = PHYSICAL_KEY_NAMES.get(input.code)
+  if (!fallbackKey || fallbackKey === input.key) return null
+  const fallback = node.next.get(fallbackKey)?.[modifiers]
+  return fallback && accepts(fallback) ? fallback : null
 }
 // Physical bindings (`[KeyQ]`) match the code on every layout, beside the printed-key slots.
 function physicalSlot(code: string): string {

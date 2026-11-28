@@ -94,7 +94,7 @@ export class KeyStateTracker {
    */
   static resetInstance(): void {
     if (KeyStateTracker.#instance) {
-      KeyStateTracker.#instance.destroy()
+      KeyStateTracker.#instance.dispose()
       KeyStateTracker.#instance = null
     }
   }
@@ -250,7 +250,11 @@ export class KeyStateTracker {
   /**
    * Destroys the tracker and removes all listeners.
    */
-  destroy(): void {
+  [Symbol.dispose](): void {
+    this.dispose()
+  }
+
+  dispose(): void {
     this.#removeListeners()
     this.#heldEntries.clear()
     this.store.setState(() => getDefaultKeyStateTrackerState())

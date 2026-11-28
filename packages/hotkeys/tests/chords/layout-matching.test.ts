@@ -1,25 +1,18 @@
 import { expect, test } from 'vitest'
-import {
-  buildKeymapTrie,
-  createKeyInput,
-  matchesKeyInput,
-  parseRegisterableHotkey,
-  trieStep,
-} from '../../src/index.js'
-import type { KeyInput, KeymapBinding, RegisterableHotkey } from '../../src/index.js'
+import { buildKeymapTrie, trieStep } from '../../src/adapter/index.js'
+import { createKeyInput, matchesKeyInput } from '../../src/index.js'
+import { parseRegisterableHotkey } from '../../src/parse.js'
+import type { KeyInput, HotkeyStroke } from '../../src/index.js'
+import type { KeymapBinding } from '../../src/adapter/index.js'
 
-function expectMatch(input: KeyInput, hotkey: RegisterableHotkey, expected: boolean) {
+function expectMatch(input: KeyInput, hotkey: HotkeyStroke, expected: boolean) {
   const parsed = parseRegisterableHotkey(hotkey, 'linux')
   const trie = buildKeymapTrie([{ chord: [hotkey], payload: 'matched' }], 'linux')
   expect(matchesKeyInput(input, parsed, 'linux'), 'matching helper').toBe(expected)
   expect(trieStep(trie, input)?.node.candidates[0]?.payload === 'matched', 'trie').toBe(expected)
 }
 
-function expectPreferred(
-  input: KeyInput,
-  preferred: RegisterableHotkey,
-  other: RegisterableHotkey,
-) {
+function expectPreferred(input: KeyInput, preferred: HotkeyStroke, other: HotkeyStroke) {
   const bindings: KeymapBinding<string>[] = [
     { chord: [preferred], payload: 'preferred' },
     { chord: [other], payload: 'other' },

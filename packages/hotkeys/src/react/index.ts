@@ -1,5 +1,5 @@
 // Re-export everything from the core package
-export * from '@shaulavo/hotkeys'
+export { formatForDisplay, getHotkeyRegistry } from '@shaulavo/hotkeys'
 
 // provider
 export * from './HotkeysProvider.js'

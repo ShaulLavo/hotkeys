@@ -1,12 +1,8 @@
 // Key cases from apps/tui/src/commands/tests/keymap.test.ts, as OpenTUI parses them.
 import { describe, expect, it, vi } from 'vitest'
-import {
-  createDispatcher,
-  keyInputFromTerminalKey,
-  matchesKeyInput,
-  terminalKeyEffects,
-} from '../src'
-import type { TerminalKeyLike } from '../src'
+import { createDispatcher, matchesKeyInput } from '../src'
+import { keyInputFromTerminalKey, terminalKeyEffects } from '../src/terminal/index.js'
+import type { TerminalKeyLike } from '../src/terminal/index.js'
 
 function key(name: string, init: Partial<TerminalKeyLike> = {}): TerminalKeyLike {
   return {

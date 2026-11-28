@@ -1,14 +1,14 @@
 import { useDefaultHotkeysOptions } from './HotkeysProvider.js'
 import { useBatchRegistrations } from './_batch-registration.js'
 import type { UseHotkeyOptions } from './useHotkey.js'
-import type { HotkeyCallback, RegisterableHotkey } from '@shaulavo/hotkeys'
+import type { HotkeyCallback, HotkeyStroke } from '@shaulavo/hotkeys'
 
 /**
  * A single hotkey definition for use with `useHotkeys`.
  */
 export interface UseHotkeyDefinition {
   /** The hotkey string (e.g., 'Mod+S', 'Escape') or RawHotkey object */
-  hotkey: RegisterableHotkey
+  hotkey: HotkeyStroke
   /** The function to call when the hotkey is pressed */
   callback: HotkeyCallback
   /** Per-hotkey options (merged on top of commonOptions) */

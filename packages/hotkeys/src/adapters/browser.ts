@@ -1,7 +1,5 @@
 import { createKeyInput } from '../key-input.js'
-import { normalizeHotkeyFromKeyInput, parseKeyInput } from '../parse.js'
-import { detectPlatform } from '../platform.js'
-import type { Hotkey, ParsedHotkey } from '../hotkey.types.js'
+import type { Platform } from '../platform.js'
 import type { KeyInput } from '../key-input.js'
 
 /** The fields of a DOM `KeyboardEvent` the adapter reads; structural so the core needs no DOM types. */
@@ -21,10 +19,7 @@ export interface KeyboardEventLike {
 }
 
 /** Converts a browser keyboard event into a {@link KeyInput}. */
-export function keyInputFromKeyboardEvent(
-  event: KeyboardEventLike,
-  platform?: 'mac' | 'windows' | 'linux',
-): KeyInput {
+export function keyInputFromKeyboardEvent(event: KeyboardEventLike, platform?: Platform): KeyInput {
   return createKeyInput({
     type: event.type === 'keyup' ? 'keyup' : 'keydown',
     key: event.key || '',
@@ -41,7 +36,7 @@ export function keyInputFromKeyboardEvent(
   })
 }
 
-function readAltGraph(event: KeyboardEventLike, platform?: 'mac' | 'windows' | 'linux'): boolean {
+function readAltGraph(event: KeyboardEventLike, platform?: Platform): boolean {
   // WebKit reports AltGraph for Option on some macOS layouts, where Option stays a shortcut modifier.
   if (platform === 'mac' || typeof event.getModifierState !== 'function') return false
   try {
@@ -50,30 +45,4 @@ function readAltGraph(event: KeyboardEventLike, platform?: 'mac' | 'windows' | '
     // Synthetic events and older browsers may not implement this reliably.
     return false
   }
-}
-
-/**
- * Parses a keyboard event into a ParsedHotkey.
- *
- * @example
- * ```ts
- * document.addEventListener('keydown', (event) => {
- *   const parsed = parseKeyboardEvent(event)
- *   console.log(parsed) // { key: 'S', ctrl: true, shift: false, ... }
- * })
- * ```
- */
-export function parseKeyboardEvent(
-  event: KeyboardEventLike,
-  platform?: 'mac' | 'windows' | 'linux',
-): ParsedHotkey {
-  return parseKeyInput(keyInputFromKeyboardEvent(event, platform))
-}
-
-/** Normalizes a keyboard event to the same canonical hotkey string as `normalizeHotkey`. */
-export function normalizeHotkeyFromEvent(
-  event: KeyboardEventLike,
-  platform: 'mac' | 'windows' | 'linux' = detectPlatform(),
-): Hotkey {
-  return normalizeHotkeyFromKeyInput(keyInputFromKeyboardEvent(event, platform), platform)
 }

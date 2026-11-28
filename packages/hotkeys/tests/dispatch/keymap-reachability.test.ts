@@ -1,13 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import {
-  bindingsForInput,
-  compileKeymap,
-  createDispatcher,
-  createKeyInput,
-  parseKeyContext,
-  resolveKeymapNode,
-  trieStep,
-} from '../../src'
+import { bindingsForInput } from '../../src/dispatch/keymap.js'
+import { compileKeymap, createDispatcher, createKeyInput, parseKeyContext } from '../../src'
+import { resolveKeymapNode, trieStep } from '../../src/adapter/index.js'
 import type { BindingSource, CompiledBinding, CompiledKeymap, KeymapEntry } from '../../src'
 
 const context = ['Workspace', 'Editor'].map(parseKeyContext)

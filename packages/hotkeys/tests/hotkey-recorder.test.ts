@@ -46,7 +46,7 @@ function createKeyboardEvent(
 
 describe.each(['key', 'code', undefined] as const)('HotkeyRecorder (recordBy: %s)', (recordBy) => {
   afterEach(() => {
-    instances.splice(0).forEach((recorder) => recorder.destroy())
+    instances.splice(0).forEach((recorder) => recorder.dispose())
     window.dispatchEvent(new Event('blur'))
     document.body.replaceChildren()
     vi.restoreAllMocks()
@@ -68,7 +68,7 @@ describe.each(['key', 'code', undefined] as const)('HotkeyRecorder (recordBy: %s
       expect(onRecord).not.toHaveBeenCalled()
       expect(recorder.store.state.isRecording).toBe(true)
 
-      recorder.destroy()
+      recorder.dispose()
       document.body.removeChild(input)
     })
 
@@ -128,7 +128,7 @@ describe.each(['key', 'code', undefined] as const)('HotkeyRecorder (recordBy: %s
       expect(onRecord).not.toHaveBeenCalled()
       expect(recorder.store.state.isRecording).toBe(true)
 
-      recorder.destroy()
+      recorder.dispose()
       document.body.removeChild(textarea)
     })
 
@@ -171,7 +171,7 @@ describe.each(['key', 'code', undefined] as const)('HotkeyRecorder (recordBy: %s
       expect(onRecord).not.toHaveBeenCalled()
       expect(recorder.store.state.isRecording).toBe(true)
 
-      recorder.destroy()
+      recorder.dispose()
       document.body.removeChild(div)
     })
   })

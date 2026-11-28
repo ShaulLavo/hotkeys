@@ -2,61 +2,71 @@
 
 ## Prerequisites
 
-Use the pinned Bun 1.4.4 and Node 24 or newer for development. Published package runtime declarations remain Node 20 or newer. CI runs on hosted Ubuntu with Node 24, Bun's download cache, and a committed `bun.lock`.
+Install Bun 1.4.4 and Node 24 or newer for local development and CI. The published `packages/hotkeys/package.json` currently declares `engines.node` as `>=20`.
+
+Run the full verification suite from the repository root:
 
 ```sh
 bun install --frozen-lockfile
 bun run verify
 ```
 
-`verify` builds each package once through Turbo, checks types and typed documentation examples, lints, checks formatting, runs both Vitest suites, packs the built output, and installs it with npm and Bun into separate fresh consumers outside this workspace. That consumer checks Node imports, server rendering of the React registration, observation, held-key, and recorder hooks without a DOM, one shared core instance, exported declarations, and linked JavaScript source maps with embedded originals. Temporary staging and consumer directories are removed in `finally` blocks.
+`bun run verify` runs these steps in order:
 
-The Vitest and mocker patches in `patches/` travel with this repository. They are needed for the pinned test tools. Browser suites use happy-dom; React server-rendering tests run in Node without browser globals. Hydration tests cover existing browser state, and lifecycle tests cover abandoned renders and Strict Mode cleanup.
+1. `bun run build` compiles `@shaulavo/hotkeys` and its four entrypoints (`.`, `./react`, `./terminal`, `./adapter`) through Turbo and emits `.d.ts` files and linked `.js.map` source maps with embedded TypeScript and TSX source text.
+2. `bun run typecheck` checks package types and runs `bun run docs:check` (`scripts/check-samples.mjs`) to compile every `ts` and `tsx` snippet in `README.md`, `packages/hotkeys/README.md`, `docs/overview.md`, and `docs/getting-started.md` against the built package.
+3. `bun run lint` runs `scripts/check-source-language.ts` and `oxlint .`.
+4. `bun run format:check` runs `oxfmt --check .`.
+5. `bun run test` runs the Vitest suite in `packages/hotkeys`.
+6. `bun run pack` builds a tarball in `release/` along with `manifest.json` and `SHA256SUMS`.
+7. `bun run test:package` installs that tarball with npm and Bun into separate fresh directories outside the workspace and verifies exports, server rendering of the React hooks without a DOM, declarations, and source maps.
+
+Keep the Vitest patches in `patches/` committed. Browser tests run under happy-dom, and React server-rendering tests run in Node without browser globals.
 
 ## Install
 
-This repository contains two packages. Use the per-package release tarballs, which include JavaScript and declarations. A Git dependency on the repository root resolves the private workspace manifest.
-
-Choose a [published release](https://github.com/ShaulLavo/hotkeys/releases) and use its full commit in `revision`. This example installs [release 3de9d21](https://github.com/ShaulLavo/hotkeys/releases/tag/hotkeys-3de9d21e2299d2b94ed2d8b012c25bf9358dcfbd):
+Install `@shaulavo/hotkeys` from npm:
 
 ```sh
-revision='3de9d21e2299d2b94ed2d8b012c25bf9358dcfbd'
-base="https://github.com/ShaulLavo/hotkeys/releases/download/hotkeys-$revision"
-bun add "@shaulavo/hotkeys@$base/fregat-hotkeys-$revision.tgz"
-# For React apps, also supply react and react-dom 18 or newer:
-bun add "@shaulavo/hotkeys/react@$base/fregat-react-hotkeys-$revision.tgz"
+bun add @shaulavo/hotkeys
 ```
 
-For npm, replace `bun add` with `npm install` using the same named URLs. Commit your lockfile. The React adapter declares the core as an exact-version peer, so the app supplies its core copy. Install both packages from the same full commit. Other packages in your app that depend on hotkeys should select that same core URL so they share its registry. The install requires no source build, Git checkout, lifecycle scripts or npm publishing credentials.
+For npm, run `npm install @shaulavo/hotkeys`.
+
+If your app imports `@shaulavo/hotkeys/react`, also install its optional peer dependencies: `react` (18 or newer), `react-dom` (18 or newer), and `@tanstack/react-store` (`^0.11.1`). All four subpaths ship inside `@shaulavo/hotkeys`, so consumers install one package and share one core instance automatically.
 
 ## Work on a local checkout
 
-Build this checkout with `bun run build`. In a consuming Bun project, temporarily replace its hotkeys dependency with `file:/absolute/path/to/hotkeys/packages/hotkeys`. If it uses the React adapter, also select `file:/absolute/path/to/hotkeys/packages/react-hotkeys`. For other linked packages that depend on hotkeys, temporarily select that same local core in their manifests and install their dependencies too. This also keeps the React adapter on the supplied core peer. Run `bun install` and rebuild hotkeys after edits. Keep these temporary manifest and lockfile changes uncommitted; restore the pinned release dependencies before the consumer PR.
+To test uncommitted changes from another project:
 
-Consumers read the local package's existing `dist` exports. Source-aware dev servers may additionally map the linked checkout's source and watch it; the consuming app owns that configuration.
+1. Build this repository with `bun run build`.
+2. In the consuming project's `package.json`, point `@shaulavo/hotkeys` at `file:/absolute/path/to/hotkeys/packages/hotkeys`.
+3. Run `bun install` in the consuming project and rerun `bun run build` here after edits.
+4. Restore the published version before opening a PR in the consuming project.
 
-Each build also emits `dist/index.js.map`, linked from the JavaScript entry point, with its TypeScript and TSX source text embedded. `bun run pack` includes those maps so debuggers can use the original source without a repository checkout.
+To test the exact packed artifact locally, run `bun run pack` and install `file:/absolute/path/to/hotkeys/release/shaulavo-hotkeys-<version>.tgz`. Each build embeds TypeScript and TSX source text in its `.js.map` files so debuggers show original source without a checkout.
 
 ## Prepare a release
 
-Package versions stay unchanged in feature PRs. At release time, advance both packages together with a patch version, update the React adapter's exact core peer version and both changelogs, refresh `bun.lock`, and merge that reviewed change. The full commit in the artifact names distinguishes builds at the same package version.
+Leave package versions unchanged in feature PRs. Add a changeset with `bunx changeset` when a change should appear in the next release.
 
-After approval, tag the selected clean main commit with a lightweight tag and push it:
+On every push to `main`, `.github/workflows/release.yml` runs `bun install --frozen-lockfile` and `bun run verify`, then runs `changesets/action`:
 
-```sh
-revision=$(git rev-parse HEAD)
-git tag "hotkeys-$revision" "$revision"
-git push origin "hotkeys-$revision"
-```
+- When pending changesets exist, the workflow opens or updates a release pull request using `bunx changeset version && bun install --lockfile-only`.
+- When that release pull request merges to `main`, the workflow runs `bun run release:publish` to publish `@shaulavo/hotkeys` to npm with provenance and creates a GitHub Release.
 
-The tag workflow calls the same CI job. It downloads those exact verified artifacts in a second job and creates a **draft** GitHub Release with two tarballs, `manifest.json`, and `SHA256SUMS`. The tag must equal `hotkeys-<full commit>`. A maintainer reviews and publishes that draft before any consumer changes its pin. Never move a published tag or replace its assets. `bun run pack` prepares the same files locally in ignored `release/` after a build; it never publishes anything.
+`bun run pack` creates local verification tarballs in the ignored `release/` directory and never publishes.
 
 ## Contribute
 
-Open issues and pull requests in this repository.
-
-Keep READMEs short; put guides in `docs/`. Retain MIT attribution. Run the narrowest relevant checks while editing, then `bun run verify` before requesting review.
+Keep `README.md` and `packages/hotkeys/README.md` at 30 lines or fewer, and place detailed guides in `docs/` or `packages/hotkeys/docs/`. Retain MIT attribution and the TanStack Hotkeys notice. Run the narrowest relevant checks while editing, then run `bun run verify` before requesting review.
 
 ## Script language
 
-New handwritten scripts and fixtures use TypeScript. `bun run lint` rejects JavaScript files outside the three existing runner paths. Those runners remain a conversion task: move `scripts/check-package.mjs`, `scripts/check-samples.mjs`, and `scripts/pack.mjs` to TypeScript, typecheck them, and remove each corresponding exception from `scripts/check-source-language.ts`. Temporary JavaScript emitted for package-consumer tests is generated from TypeScript and stays outside the repository.
+Write all new scripts and test fixtures in TypeScript. `bun run lint` runs `scripts/check-source-language.ts`, which rejects `.js`, `.mjs`, and `.cjs` files outside three legacy runners:
+
+- `scripts/check-package.mjs`
+- `scripts/check-samples.mjs`
+- `scripts/pack.mjs`
+
+Converting each runner to TypeScript and removing its exception from `scripts/check-source-language.ts` remains open cleanup work. Temporary JavaScript generated during package-consumer tests stays outside the repository.

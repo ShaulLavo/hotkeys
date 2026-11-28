@@ -4,17 +4,19 @@ import {
   HotkeyRecorder,
   HotkeySequenceRecorder,
   formatForDisplay,
-  formatHotkey,
   matchesKeyboardEvent,
+} from '../src'
+import { formatHotkey } from '../src/format.js'
+import {
   normalizeHotkeyFromParsed,
   normalizeRegisterableHotkey,
   parseRegisterableHotkey,
-} from '../src'
+} from '../src/parse.js'
 import type { LogicalKey, ParsedHotkey } from '../src'
 
 const recorders: Array<HotkeyRecorder | HotkeySequenceRecorder> = []
 afterEach(() => {
-  recorders.splice(0).forEach((recorder) => recorder.destroy())
+  recorders.splice(0).forEach((recorder) => recorder.dispose())
   window.dispatchEvent(new Event('blur'))
   getHotkeyRegistry().dispose()
   document.body.replaceChildren()

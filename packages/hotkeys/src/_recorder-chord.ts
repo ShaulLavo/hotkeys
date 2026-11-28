@@ -1,7 +1,12 @@
 import { normalizeKeyName } from './constants.js'
 import { keyInputFromKeyboardEvent } from './adapters/browser.js'
-import { isModifierKey, normalizeHotkeyFromParsed, parseKeyInput } from './parse.js'
-import type { RecorderKeyMode, RecorderOptions, RecorderRejection } from './recorder-options.js'
+import { isModifierKey, normalizeHotkey, parseKeyInput } from './parse.js'
+import type {
+  RecorderKeyMode,
+  RecorderModifierMode,
+  RecorderOptions,
+  RecorderRejection,
+} from './recorder-options.js'
 import type { Hotkey } from './hotkey.types.js'
 
 /**
@@ -13,6 +18,7 @@ export function hotkeyChordFromKeydown(
   event: KeyboardEvent,
   platform: 'mac' | 'windows' | 'linux',
   recordBy: RecorderKeyMode = 'code',
+  modifierMode: RecorderModifierMode = 'adaptive',
 ): Hotkey | null {
   const input = keyInputFromKeyboardEvent(event, platform)
   if (input.composing || isModifierKey(normalizeKeyName(event.key)) || event.key === 'AltGraph')
@@ -25,12 +31,13 @@ export function hotkeyChordFromKeydown(
   )
     return null
   const parsed = parseKeyInput(input)
+  const options = { platform, mode: modifierMode === 'adaptive' ? 'adaptive' : 'resolved' } as const
   if (recordBy === 'code') {
     // Remove logical identity rather than placing a physical code in the key field.
     const { key: _key, code: _code, ...modifiers } = parsed
-    return normalizeHotkeyFromParsed({ ...modifiers, code: event.code }, platform)
+    return normalizeHotkey({ ...modifiers, code: event.code }, options) as Hotkey
   }
-  return parsed.key ? normalizeHotkeyFromParsed(parsed, platform) : null
+  return parsed.key ? (normalizeHotkey(parsed, options) as Hotkey) : null
 }
 
 /**

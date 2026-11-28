@@ -19,7 +19,8 @@ export type KeyEffects<Source> = {
   readonly swallow: (source: Source) => void
 }
 export type ChordRuntimeOptions<Payload, Context, Source> = {
-  readonly bindings: readonly KeymapBinding<Payload>[]
+  readonly bindings?: readonly KeymapBinding<Payload>[]
+  readonly trie?: KeymapNode<Payload>
   readonly platform: KeymapPlatform
   readonly enabled?: boolean
   readonly effects: KeyEffects<Source>
@@ -85,12 +86,14 @@ export type ChordRuntime<Payload, Source> = {
   readonly capturesKey: (input: KeyInput) => boolean
   /** Forgets held keys, for blur and hidden tabs where their release never arrives. */
   readonly releaseAll: () => void
+  readonly updateTrie: (trie: KeymapNode<Payload>) => void
   readonly updateBindings: (bindings: readonly KeymapBinding<Payload>[]) => void
   readonly setEnabled: (enabled: boolean) => void
   /** Cancels pending state and invalidates active dispatch/recovery, including detached buffers. */
   readonly cancel: (outcome?: ChordOutcome) => void
   readonly dispose: () => void
   readonly pending: () => PendingChordLabel | null
+  readonly subscribePending: (listener: (pending: PendingChordLabel | null) => void) => () => void
 }
 
 export type KeymapSelection<Payload> = {
@@ -142,12 +145,15 @@ export function createChordRuntime<Payload, Context, Source>(
 ): ChordRuntime<Payload, Source> {
   const { effects, platform } = options
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
-  let trie = buildKeymapTrie(options.bindings, platform)
+  let trie = options.trie ?? buildKeymapTrie(options.bindings ?? [], platform)
   let enabled = options.enabled !== false
   let disposed = false
   let activeOperation: Operation | null = null
   let pending: Pending<Payload, Source> | null = null
   let pendingRevision = 0
+  let pendingLabel: PendingChordLabel | null = null
+  const pendingListeners = new Set<(label: PendingChordLabel | null) => void>()
+  if (options.onPendingChange) pendingListeners.add(options.onPendingChange)
   let timer: ReturnType<typeof setTimeout> | undefined
   const claimedKeys = new Map<string, Ownership>()
   const isAvailable = options.isAvailable ?? (() => true)
@@ -226,10 +232,11 @@ export function createChordRuntime<Payload, Context, Source>(
   function endPending(): Pending<Payload, Source> {
     const ended = pending!
     pending = null
+    pendingLabel = null
     clearTimeout(timer)
     const revision = changedPending()
     syncCapture()
-    if (revision === pendingRevision) options.onPendingChange?.(null)
+    notifyPending(revision)
     return ended
   }
   function report(
@@ -288,13 +295,27 @@ export function createChordRuntime<Payload, Context, Source>(
   }
   function setPending(next: Pending<Payload, Source>) {
     pending = next
+    pendingLabel = Object.freeze({ keys: next.keys, candidateCount: next.count })
     clearTimeout(timer)
     if (next.timed) timer = setTimeout(timeout, timeoutMs)
     const revision = changedPending()
     syncCapture()
     if (!retainPending(next, revision)) return
-    options.onPendingChange?.({ keys: next.keys, candidateCount: next.count })
+    notifyPending(revision)
     retainPending(next, revision)
+  }
+  function notifyPending(revision: number) {
+    const label = pendingLabel
+    for (const listener of Array.from(pendingListeners)) {
+      if (revision !== pendingRevision) break
+      if (pendingListeners.has(listener)) listener(label)
+    }
+  }
+  function subscribePending(listener: (pending: PendingChordLabel | null) => void) {
+    if (disposed) return () => {}
+    const registration = (label: PendingChordLabel | null) => listener(label)
+    pendingListeners.add(registration)
+    return () => void pendingListeners.delete(registration)
   }
   function retainPending(next: Pending<Payload, Source>, revision: number): boolean {
     if (pending !== next || revision !== pendingRevision) return false
@@ -372,10 +393,10 @@ export function createChordRuntime<Payload, Context, Source>(
     let found: { index: number; bindings: readonly KeymapBinding<Payload>[] } | null = null
     for (let index = 0; index < buffer.length && canContinue(); index += 1) {
       const entry = buffer[index]!
-      const edge = trieStep(node, entry.input)
-      if (!edge) break
-      node = edge.node
-      const { bindings } = select(node, context, entry.source)
+      const step = selectEdge(node, entry.input, context, entry.source)
+      if (!step) break
+      node = step.edge.node
+      const { bindings } = step.selection
       if (bindings.length) found = { index, bindings }
     }
     return found
@@ -438,25 +459,36 @@ export function createChordRuntime<Payload, Context, Source>(
       const continued = continueChord(input, source)
       if (continued !== undefined) return continued
     }
-    const edge = trieStep(trie, input)
-    if (!edge) return null
+    if (!trieStep(trie, input)) return null
     rememberFocus()
     if (!ownsPending()) return null
     const context = options.captureContext(source)
-    const selection = select(edge.node, context, source)
-    if (!ownsPending()) return null
-    return resolve(edge, input, source, context, selection, false)
+    const step = selectEdge(trie, input, context, source)
+    if (!step || !ownsPending()) return null
+    return resolve(step.edge, input, source, context, step.selection, false)
+  }
+  function selectEdge(
+    node: KeymapNode<Payload>,
+    input: KeyInput,
+    context: Context,
+    source: Source,
+  ) {
+    return selectTrieStep(node, input, (next) =>
+      canContinue() ? select(next, context, source) : EMPTY_SELECTION,
+    )
+  }
+  function resolveContinuation(input: KeyInput, source: Source) {
+    const node = pending!.node
+    if (!trieStep(node, input)) return null
+    const context = options.captureContext(source)
+    const step = selectEdge(node, input, context, source)
+    return step && { ...step, context }
   }
   /** Returns undefined when the key matches from the root after the chord replayed. */
   function continueChord(input: KeyInput, source: Source): Ownership | null | undefined {
-    const edge = trieStep(pending!.node, input)
-    if (edge) {
-      const context = options.captureContext(source)
-      const selection = select(edge.node, context, source)
-      if (!ownsPending()) return null
-      if (selection.bindings.length || selection.pending)
-        return resolve(edge, input, source, context, selection, true)
-    }
+    const step = resolveContinuation(input, source)
+    if (!ownsPending()) return null
+    if (step) return resolve(step.edge, input, source, step.context, step.selection, true)
     const ended = endPending()
     const entry = { input, source }
     let claimed: KeymapBinding<Payload> | null = null
@@ -480,18 +512,16 @@ export function createChordRuntime<Payload, Context, Source>(
     buffer: readonly Buffered<Source>[],
   ): Sequence<Payload, Context, Source> | null {
     let node = trie
+    let selection: KeymapSelection<Payload> = EMPTY_SELECTION
     const keys: string[] = []
-    for (const { input } of buffer) {
-      const edge = trieStep(node, input)
-      if (!edge) return null
-      node = edge.node
-      keys.push(edge.keys)
+    const context = options.captureContext(buffer.at(-1)!.source)
+    for (const { input, source } of buffer) {
+      const step = selectEdge(node, input, context, source)
+      if (!step || !ownsPending()) return null
+      node = step.edge.node
+      keys.push(step.edge.keys)
+      selection = step.selection
     }
-    const { source } = buffer.at(-1)!
-    const context = options.captureContext(source)
-    const selection = select(node, context, source)
-    if (!ownsPending()) return null
-    if (!selection.pending && !selection.bindings.length) return null
     return { node, keys: keys.join(' '), buffer, context, selection }
   }
   function resumeSequence(sequence: Sequence<Payload, Context, Source>): Ownership | null {
@@ -594,7 +624,10 @@ export function createChordRuntime<Payload, Context, Source>(
     syncCapture()
   }
   function updateBindings(bindings: readonly KeymapBinding<Payload>[]) {
-    trie = buildKeymapTrie(bindings, platform)
+    updateTrie(buildKeymapTrie(bindings, platform))
+  }
+  function updateTrie(next: KeymapNode<Payload>) {
+    trie = next
     cancel('superseded')
   }
   function setEnabled(next: boolean) {
@@ -607,10 +640,8 @@ export function createChordRuntime<Payload, Context, Source>(
     disposed = true
     claimedKeys.clear()
     cancel('disposed')
+    pendingListeners.clear()
     syncCapture()
-  }
-  function currentPending(): PendingChordLabel | null {
-    return pending && { keys: pending.keys, candidateCount: pending.count }
   }
   return {
     handleKey,
@@ -618,9 +649,30 @@ export function createChordRuntime<Payload, Context, Source>(
     capturesKey,
     releaseAll,
     updateBindings,
+    updateTrie,
     setEnabled,
     cancel,
     dispose,
-    pending: currentPending,
+    pending: () => pendingLabel,
+    subscribePending,
   }
+}
+
+const EMPTY_SELECTION = { bindings: [], pending: 0 } as const
+
+export function selectTrieStep<Payload>(
+  node: KeymapNode<Payload>,
+  input: KeyInput,
+  select: (next: KeymapNode<Payload>) => KeymapSelection<Payload>,
+  includeUnavailable = false,
+): { edge: KeymapEdge<Payload>; selection: KeymapSelection<Payload> } | null {
+  let fallback: { edge: KeymapEdge<Payload>; selection: KeymapSelection<Payload> } | null = null
+  let selection: KeymapSelection<Payload> = EMPTY_SELECTION
+  const edge = trieStep(node, input, (candidate) => {
+    selection = select(candidate.node)
+    if (selection.pending || selection.bindings.length) return true
+    if (includeUnavailable) fallback ??= { edge: candidate, selection }
+    return false
+  })
+  return edge ? { edge, selection } : fallback
 }

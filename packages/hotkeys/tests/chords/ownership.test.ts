@@ -1,12 +1,8 @@
 import { afterEach, expect, test, vi } from 'vitest'
-import { createChordRuntime, createKeyInput } from '../../src/index.js'
-import type {
-  ChordRuntime,
-  ChordRuntimeOptions,
-  KeymapBinding,
-  KeymapSequenceEvent,
-  PendingChordLabel,
-} from '../../src/index.js'
+import { createChordRuntime } from '../../src/adapter/index.js'
+import { createKeyInput } from '../../src/index.js'
+import type { ChordRuntime, ChordRuntimeOptions, KeymapBinding } from '../../src/adapter/index.js'
+import type { KeymapSequenceEvent, PendingChordLabel } from '../../src/index.js'
 
 type Source = { readonly key: string }
 type Options = ChordRuntimeOptions<string, null, Source>

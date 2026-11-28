@@ -1,12 +1,7 @@
 // Translated from Zed's crates/gpui/src/keymap/context.rs tests (zed-industries/zed@933d8d9).
 import { describe, expect, it } from 'vitest'
-import {
-  createKeyContext,
-  evaluatePredicate,
-  parseContextPredicate,
-  parseKeyContext,
-  predicateDepth,
-} from '../../src'
+import { createKeyContext, parseContextPredicate, parseKeyContext } from '../../src'
+import { evaluatePredicate, predicateDepth } from '../../src/adapter/index.js'
 import type { ContextPredicate } from '../../src'
 
 const id = (name: string): ContextPredicate => ({ kind: 'identifier', name })

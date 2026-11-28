@@ -6,8 +6,8 @@ import { useIsomorphicLayoutEffect } from './utils.js'
 import type {
   HotkeyCallback,
   HotkeyOptions,
-  HotkeyRegistrationHandle,
-  RegisterableHotkey,
+  HotkeyRegistration,
+  HotkeyStroke,
 } from '@shaulavo/hotkeys'
 
 export interface UseHotkeyOptions extends Omit<HotkeyOptions, 'target'> {
@@ -81,7 +81,7 @@ export interface UseHotkeyOptions extends Omit<HotkeyOptions, 'target'> {
  * ```
  */
 export function useHotkey(
-  hotkey: RegisterableHotkey,
+  hotkey: HotkeyStroke,
   callback: HotkeyCallback,
   options: UseHotkeyOptions = {},
 ): void {
@@ -91,7 +91,7 @@ export function useHotkey(
   }
 
   // Stable ref for registration handle
-  const registrationRef = useRef<HotkeyRegistrationHandle | null>(null)
+  const registrationRef = useRef<HotkeyRegistration | null>(null)
 
   // Refs to capture current values for use in effect without adding dependencies
   const callbackRef = useRef(callback)
@@ -115,7 +115,7 @@ export function useHotkey(
     // Wait until the target is available, for example when a ref is attached.
     if (!resolvedTarget) {
       if (registrationRef.current?.isActive) {
-        registrationRef.current.unregister()
+        registrationRef.current.dispose()
         registrationRef.current = null
       }
       registeredIdentityRef.current = null
@@ -127,7 +127,7 @@ export function useHotkey(
       registeredIdentityRef.current !== null && registeredIdentityRef.current !== identity
 
     if (registrationRef.current?.isActive && hotkeyChanged) {
-      registrationRef.current.unregister()
+      registrationRef.current.dispose()
       registrationRef.current = null
     }
 
@@ -150,7 +150,7 @@ export function useHotkey(
     // Cleanup on unmount
     return () => {
       if (registrationRef.current?.isActive) {
-        registrationRef.current.unregister()
+        registrationRef.current.dispose()
         registrationRef.current = null
       }
     }

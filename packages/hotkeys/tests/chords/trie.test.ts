@@ -1,6 +1,8 @@
 import { expect, test } from 'vitest'
-import { PUNCTUATION_CODE_MAP, buildKeymapTrie, createKeyInput, trieStep } from '../../src'
-import type { KeymapBinding } from '../../src'
+import { PUNCTUATION_CODE_MAP } from '../../src/constants.js'
+import { buildKeymapTrie, trieStep } from '../../src/adapter/index.js'
+import { createKeyInput } from '../../src'
+import type { KeymapBinding } from '../../src/adapter/index.js'
 
 function stroke(key: string, code: string, mask: number, altGraph = false) {
   return createKeyInput({
@@ -82,7 +84,7 @@ test('stores each stroke under its normalized label and counts descendants per p
     'mac',
   )
   const edge = trieStep(trie, stroke('k', 'KeyK', 4))
-  expect(edge?.keys).toBe('Mod+K')
+  expect(edge?.keys).toBe('Meta+K')
   expect(edge?.node.candidates).toEqual([])
   expect(edge?.node.descendants.map((binding) => binding.payload)).toEqual(['comment', 'uncomment'])
 })

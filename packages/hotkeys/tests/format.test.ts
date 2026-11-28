@@ -6,11 +6,11 @@ import {
   formatWithLabels,
 } from '../src/format'
 import { normalizeRegisterableHotkey } from '../src/parse'
-import type { ParsedHotkey, RegisterableHotkey } from '../src/hotkey.types'
+import type { ParsedHotkey, HotkeyStroke } from '../src/hotkey.types'
 
 /** Strings that parse correctly but are not in the `Hotkey` template union. */
-function hk(s: string): RegisterableHotkey {
-  return s as RegisterableHotkey
+function hk(s: string): HotkeyStroke {
+  return s as HotkeyStroke
 }
 
 describe('formatHotkeySequence', () => {

@@ -1,9 +1,9 @@
-import type { RegisterableHotkey } from '../hotkey.types.js'
+import type { HotkeySequence, RegisterableHotkey } from '../hotkey.types.js'
 
 export type KeyChord = readonly [RegisterableHotkey, ...RegisterableHotkey[]]
 export type KeymapPlatform = 'mac' | 'windows' | 'linux'
 export type KeymapBinding<Payload> = {
-  readonly chord: KeyChord
+  readonly chord: HotkeySequence
   readonly payload: Payload
   readonly preventDefault?: boolean
   readonly stopPropagation?: boolean

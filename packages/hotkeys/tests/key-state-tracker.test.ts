@@ -363,7 +363,7 @@ describe('KeyStateTracker with shortcut dispatch', () => {
     const changed = vi.fn()
     const subscription = tracker.store.subscribe(changed)
 
-    tracker.destroy()
+    tracker.dispose()
     changed.mockClear()
     dispatchKey('keydown', 'F9')
     dispatchKey('keyup', 'F9')

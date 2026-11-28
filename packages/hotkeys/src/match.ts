@@ -1,6 +1,6 @@
 import { matchKeyInput } from './_match.js'
 import { keyInputFromKeyboardEvent } from './adapters/browser.js'
-import { parseHotkey, parseRegisterableHotkey } from './parse.js'
+import { parseHotkey } from './parse.js'
 import { detectPlatform } from './platform.js'
 import { keysEqual } from './_keyboard-event.js'
 import type {
@@ -107,8 +107,9 @@ export function createHotkeyHandler(
   const parsed = typeof hotkey === 'string' ? parseHotkey(hotkey, resolvedPlatform) : hotkey
 
   const context: HotkeyCallbackContext = {
-    hotkey: hotkeyString,
-    parsedHotkey: parsed,
+    shortcut: hotkeyString,
+    strokes: [parsed],
+    stroke: parsed,
   }
 
   return (event: KeyboardEvent) => {
@@ -157,8 +158,9 @@ export function createMultiHotkeyHandler(
     .map(([hotkey, handler]) => {
       const parsed = parseHotkey(hotkey, resolvedPlatform)
       const context: HotkeyCallbackContext = {
-        hotkey: hotkey as Hotkey,
-        parsedHotkey: parsed,
+        shortcut: hotkey,
+        strokes: [parsed],
+        stroke: parsed,
       }
       return { parsed, handler, context }
     })
@@ -201,12 +203,12 @@ function formatParsedHotkey(parsed: ParsedHotkey): Hotkey {
  * remain distinct even when one keyboard event could match both.
  */
 export function areHotkeysEqual(
-  left: RegisterableHotkey,
-  right: RegisterableHotkey,
+  left: RegisterableHotkey | ParsedHotkey,
+  right: RegisterableHotkey | ParsedHotkey,
   platform = detectPlatform(),
 ): boolean {
-  const a = parseRegisterableHotkey(left, platform)
-  const b = parseRegisterableHotkey(right, platform)
+  const a = parseHotkey(left, platform)
+  const b = parseHotkey(right, platform)
   return (
     a.ctrl === b.ctrl &&
     a.alt === b.alt &&
