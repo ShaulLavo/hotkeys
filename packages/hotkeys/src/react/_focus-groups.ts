@@ -24,11 +24,17 @@ export type FocusAttachment<Commands extends CommandMap> = {
     commands: FocusCommands<Commands> | undefined,
   ) => void
   readonly detach: () => void
+  readonly refreshPeers: () => void
+}
+
+type GroupMember = {
+  readonly readContext: () => FocusNodeContext | undefined
+  readonly resolve: () => void
 }
 
 type Group<Commands extends CommandMap> = {
   readonly node: FocusNode<KeyboardEvent, Commands>
-  readonly contexts: Set<() => FocusNodeContext | undefined>
+  readonly members: Set<GroupMember>
   readonly detachElement: () => void
 }
 type Parent<Commands extends CommandMap> = FocusNode<KeyboardEvent, Commands> | null
@@ -43,20 +49,24 @@ export function attachFocusNode<Commands extends CommandMap>(
   dispatcher: BrowserDispatcher<Commands>,
   element: Element,
   parent: Parent<Commands>,
+  resolve: () => void,
 ): FocusAttachment<Commands> {
   const groups = groupsFor(dispatcher)
   let parents = groups.get(element)
   if (!parents) groups.set(element, (parents = new Map()))
   let group = parents.get(parent)
   if (!group) parents.set(parent, (group = createGroup(dispatcher, element, parent)))
-  const { node, contexts, detachElement } = group
+  const { node, members, detachElement } = group
   const handlers = new Map<CommandName<Commands>, () => void>()
   let committedContext: FocusContextReader | undefined
   let committedCommands: FocusCommands<Commands> | undefined
-  const read = () =>
-    typeof committedContext === 'function' ? committedContext() : committedContext
+  const member: GroupMember = {
+    resolve,
+    readContext: () =>
+      typeof committedContext === 'function' ? committedContext() : committedContext,
+  }
   // Attachment order also defines context merge order and initial handler order.
-  contexts.add(read)
+  members.add(member)
 
   function sync(
     context: FocusContextReader | undefined,
@@ -83,17 +93,23 @@ export function attachFocusNode<Commands extends CommandMap>(
   }
 
   function detach() {
-    if (!contexts.delete(read)) return
+    if (!members.delete(member)) return
     for (const remove of handlers.values()) remove()
     handlers.clear()
-    if (contexts.size > 0) return
+    if (members.size > 0) return
     parents!.delete(parent)
     if (!parents!.size) groups.delete(element)
     detachElement()
     node.remove()
   }
 
-  return { node, sync, detach }
+  return { node, sync, detach, refreshPeers }
+
+  function refreshPeers() {
+    for (const peer of Array.from(members)) {
+      if (peer !== member && members.has(peer)) peer.resolve()
+    }
+  }
 }
 
 function groupsFor<Commands extends CommandMap>(
@@ -110,16 +126,16 @@ function createGroup<Commands extends CommandMap>(
   element: Element,
   parent: Parent<Commands>,
 ): Group<Commands> {
-  const contexts = new Set<() => FocusNodeContext | undefined>()
-  const node = dispatcher.createNode({ parent, readContext: () => mergeContexts(contexts) })
-  return { node, contexts, detachElement: dispatcher.attachElement(node, element) }
+  const members = new Set<GroupMember>()
+  const node = dispatcher.createNode({ parent, readContext: () => mergeContexts(members) })
+  return { node, members, detachElement: dispatcher.attachElement(node, element) }
 }
 
-function mergeContexts(readers: ReadonlySet<() => FocusNodeContext | undefined>): KeyContext {
+function mergeContexts(members: ReadonlySet<GroupMember>): KeyContext {
   const identifiers = new Set<string>()
   const values = new Map<string, string>()
-  for (const read of readers) {
-    const context = read()
+  for (const member of members) {
+    const context = member.readContext()
     if (context === undefined) continue
     const normalized =
       typeof context === 'string' ? parseKeyContext(context) : createKeyContext(context)

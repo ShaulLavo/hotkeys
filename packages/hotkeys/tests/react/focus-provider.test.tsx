@@ -1,4 +1,12 @@
-import { StrictMode, createRef, useCallback, useLayoutEffect, useRef, useState } from 'react'
+import {
+  Activity,
+  StrictMode,
+  createRef,
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react'
 import { createPortal } from 'react-dom'
 import { act, fireEvent, render, renderHook, waitFor } from '@testing-library/react'
 import { expect, expectTypeOf, it, vi } from 'vitest'
@@ -1112,4 +1120,116 @@ it('does not recreate nested nodes while unmounting an external scope', () => {
   view.unmount()
   expect(dispatcher.nodeForElement(child)).toBeNull()
   expect(dispatcher.nodeForElement(parent)).toBeNull()
+})
+
+it('suspends focus resolution while an Activity’s layout is disconnected', async () => {
+  using dispatcher = createBrowserDispatcher({
+    keymap: [{ keys: 'F8', command: 'go', context: 'Outside' }],
+  })
+  const target = document.body.appendChild(document.createElement('button'))
+  const command = vi.fn()
+
+  function Child() {
+    const { ref } = useFocusNode({})
+    return <button ref={ref}>Child</button>
+  }
+  const app = (mode: 'visible' | 'hidden') => (
+    <HotkeysProvider dispatcher={dispatcher}>
+      <Activity mode={mode}>
+        <FocusScope target={target} context='Outside' commands={{ go: command }}>
+          <Child />
+        </FocusScope>
+      </Activity>
+    </HotkeysProvider>
+  )
+  const view = render(app('visible'))
+  try {
+    press(target, 'F8', { code: 'F8' })
+    expect(command).toHaveBeenCalledOnce()
+    view.rerender(app('hidden'))
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(dispatcher.nodeForElement(target)).toBeNull()
+    press(target, 'F8', { code: 'F8' })
+    expect(command).toHaveBeenCalledOnce()
+
+    view.rerender(app('visible'))
+    press(target, 'F8', { code: 'F8' })
+    expect(command).toHaveBeenCalledTimes(2)
+    view.rerender(app('hidden'))
+    view.unmount()
+    expect(dispatcher.nodeForElement(target)).toBeNull()
+  } finally {
+    view.unmount()
+    target.remove()
+  }
+})
+
+it('moves composed registrations before a reparented child ref reads the group', () => {
+  using dispatcher = createBrowserDispatcher()
+  const first = dispatcher.createNode({ context: 'First' })
+  const second = dispatcher.createNode({ context: 'Second' })
+  const portal = document.createElement('div')
+  const calls: string[] = []
+  const values: Array<string | undefined> = []
+
+  function Child({ changed }: { changed: boolean }) {
+    const { ref } = useFocusNode({})
+    const bind: React.RefCallback<HTMLButtonElement> = useCallback(
+      (element) => {
+        const cleanup = ref(element)
+        if (!element?.hasAttribute('data-changed')) return cleanup
+        const node = dispatcher.nodeForElement(element)
+        if (node) {
+          values.push(node.parent?.context().values.get('mode'))
+          dispatcher.dispatchCommandFrom(node, 'go')
+        }
+        return cleanup
+      },
+      [ref],
+    )
+    return (
+      <button key={String(changed)} data-changed={changed ? '' : undefined} ref={bind}>
+        Child
+      </button>
+    )
+  }
+  function Owner({ changed }: { changed: boolean }) {
+    const parent = changed ? second : first
+    const { ref } = useFocusNode({
+      parent,
+      context: 'mode=forwarded',
+      commands: { go: () => void calls.push('forwarded') },
+    })
+    return createPortal(
+      <FocusScope
+        ref={ref}
+        parent={parent}
+        context='mode=scope'
+        commands={{
+          go: () => {
+            calls.push('scope')
+            return false
+          },
+        }}
+      >
+        <Child changed={changed} />
+      </FocusScope>,
+      portal,
+    )
+  }
+  const app = (changed: boolean) => (
+    <HotkeysProvider dispatcher={dispatcher}>
+      <Owner changed={changed} />
+    </HotkeysProvider>
+  )
+  const view = render(app(false))
+  try {
+    view.rerender(app(true))
+    expect(values).toEqual(['forwarded'])
+    expect(calls).toEqual(['scope', 'forwarded'])
+  } finally {
+    view.unmount()
+  }
 })

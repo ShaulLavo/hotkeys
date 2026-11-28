@@ -125,7 +125,7 @@ type FocusContext<Commands extends CommandMap> = {
 }
 type CommitStore<Value> = {
   readonly read: () => Value | null
-  readonly write: (value: Value | null) => void
+  readonly write: (value: Value | null, beforeNotify?: () => void) => void
   readonly subscribe: (listener: () => void) => () => void
 }
 
@@ -301,6 +301,7 @@ function useNodeAttachment<Commands extends CommandMap>(
   const [snapshot, binding] = useCommitSnapshot<BoundNode<Commands>>()
   const attachedRef = useRef<{ readonly element: Element } | null>(null)
   const reconnect = useRef<(() => void) | null>(null)
+  const layoutActive = useRef(true)
   const canAttach = enabled && dispatcher !== null
   const explicit = target !== undefined
   const targetRef = target && 'current' in target ? target : null
@@ -312,6 +313,14 @@ function useNodeAttachment<Commands extends CommandMap>(
     current.attachment.detach()
     binding.write(null)
   }, [binding])
+
+  const resolve = useCallback(() => {
+    const refresh = reconnect.current
+    if (!refresh || !layoutActive.current) return null
+    refresh()
+    return binding.read()
+  }, [binding])
+  const childScope = useMemo(() => ({ resolve, subscribe: binding.subscribe }), [binding, resolve])
 
   const connect = useCallback(
     (element: Element | null, latest: FocusOptions<Commands>) => {
@@ -328,12 +337,15 @@ function useNodeAttachment<Commands extends CommandMap>(
         current.explicit === explicit
       )
         return
-      const attachment = attachFocusNode(dispatcher, element, nodeParent)
+      const attachment = attachFocusNode(dispatcher, element, nodeParent, resolve)
       attachment.sync(latest.context, latest.commands)
       current?.attachment.detach()
-      binding.write({ dispatcher, parent: nodeParent, element, attachment, explicit })
+      const next = { dispatcher, parent: nodeParent, element, attachment, explicit }
+      const refreshPeers =
+        current?.element === element ? current.attachment.refreshPeers : undefined
+      binding.write(next, refreshPeers)
     },
-    [binding, canAttach, dispatcher, explicit, inherited, parent, release],
+    [binding, canAttach, dispatcher, explicit, inherited, parent, release, resolve],
   )
 
   useInsertionEffect(() => {
@@ -350,14 +362,6 @@ function useNodeAttachment<Commands extends CommandMap>(
       reconnect.current = null
     }
   }, [binding, commands, connect, context, dispatcher, enabled, target])
-
-  const resolve = useCallback(() => {
-    const refresh = reconnect.current
-    if (!refresh) return null
-    refresh()
-    return binding.read()
-  }, [binding])
-  const childScope = useMemo(() => ({ resolve, subscribe: binding.subscribe }), [binding, resolve])
 
   const clearRef = useCallback(
     (entry: { readonly element: Element }) => {
@@ -401,6 +405,13 @@ function useNodeAttachment<Commands extends CommandMap>(
 
   const observation = useRef<ReturnType<typeof observeTargetRef> | null>(null)
   useLayoutEffect(() => {
+    layoutActive.current = true
+    return () => {
+      layoutActive.current = false
+      release()
+    }
+  }, [release])
+  useLayoutEffect(() => {
     resolve()
     observation.current?.refresh()
   })
@@ -421,7 +432,6 @@ function useNodeAttachment<Commands extends CommandMap>(
       observation.current = null
     }
   }, [binding, canAttach, dispatcher, resolve, targetRef])
-  useLayoutEffect(() => () => release(), [release])
 
   const node = canAttach && snapshot?.dispatcher === dispatcher ? snapshot.attachment.node : null
   return { result: { ref, node, dispatcher }, scope: childScope, rollbackRef }
@@ -447,9 +457,11 @@ function useCommitSnapshot<Value>() {
     const listeners = new Set<() => void>()
     return {
       read: () => current,
-      write: (value) => {
+      write: (value, beforeNotify) => {
         if (Object.is(value, current)) return
         current = value
+        beforeNotify?.()
+        if (current !== value) return
         for (const listener of Array.from(listeners)) {
           if (listeners.has(listener)) listener()
         }
