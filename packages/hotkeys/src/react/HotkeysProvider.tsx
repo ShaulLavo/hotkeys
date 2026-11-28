@@ -129,10 +129,10 @@ type CommitStore<Value> = {
   readonly subscribe: (listener: () => void) => () => void
 }
 
-type ParentScope<Commands extends CommandMap> = Pick<
-  CommitStore<BoundNode<Commands>>,
-  'read' | 'subscribe'
->
+type ParentScope<Commands extends CommandMap> = {
+  readonly resolve: () => BoundNode<Commands> | null
+  readonly subscribe: CommitStore<BoundNode<Commands>>['subscribe']
+}
 
 const noPending = () => null
 const noSubscribe = () => () => {}
@@ -300,18 +300,11 @@ function useNodeAttachment<Commands extends CommandMap>(
 } {
   const [snapshot, binding] = useCommitSnapshot<BoundNode<Commands>>()
   const attachedRef = useRef<{ readonly element: Element } | null>(null)
-  const committedOptions = useRef<FocusOptions<Commands> | undefined>(undefined)
+  const reconnect = useRef<(() => void) | null>(null)
   const canAttach = enabled && dispatcher !== null
   const explicit = target !== undefined
   const targetRef = target && 'current' in target ? target : null
   const inherited = parent === undefined ? scope : null
-
-  useInsertionEffect(() => {
-    // Descendant refs can read or dispatch through this attachment before layout effects.
-    committedOptions.current = { context, commands }
-    const current = binding.read()
-    if (enabled && current?.dispatcher === dispatcher) current.attachment.sync(context, commands)
-  }, [binding, context, commands, dispatcher, enabled])
 
   const release = useCallback(() => {
     const current = binding.read()
@@ -321,7 +314,7 @@ function useNodeAttachment<Commands extends CommandMap>(
   }, [binding])
 
   const connect = useCallback(
-    (element: Element | null, latest?: FocusOptions<Commands>) => {
+    (element: Element | null, latest: FocusOptions<Commands>) => {
       const nodeParent = inheritedParent(inherited, dispatcher, parent)
       if (!canAttach || !dispatcher || !element || nodeParent === undefined) {
         release()
@@ -333,17 +326,33 @@ function useNodeAttachment<Commands extends CommandMap>(
         current.parent === nodeParent &&
         current.dispatcher === dispatcher &&
         current.explicit === explicit
-      ) {
-        if (latest) current.attachment.sync(latest.context, latest.commands)
+      )
         return
-      }
       const attachment = attachFocusNode(dispatcher, element, nodeParent)
-      if (latest) attachment.sync(latest.context, latest.commands)
+      attachment.sync(latest.context, latest.commands)
       current?.attachment.detach()
       binding.write({ dispatcher, parent: nodeParent, element, attachment, explicit })
     },
     [binding, canAttach, dispatcher, explicit, inherited, parent, release],
   )
+
+  useInsertionEffect(() => {
+    // Publish the whole committed attachment before descendant callback refs run.
+    const options = { context, commands }
+    reconnect.current = () => {
+      const element =
+        target === undefined ? (attachedRef.current?.element ?? null) : readTarget(target)
+      connect(element, options)
+    }
+    const current = binding.read()
+    if (enabled && current?.dispatcher === dispatcher) current.attachment.sync(context, commands)
+  }, [binding, commands, connect, context, dispatcher, enabled, target])
+
+  const resolve = useCallback(() => {
+    reconnect.current?.()
+    return binding.read()
+  }, [binding])
+  const childScope = useMemo(() => ({ resolve, subscribe: binding.subscribe }), [binding, resolve])
 
   const clearRef = useCallback(
     (entry: { readonly element: Element }) => {
@@ -379,30 +388,25 @@ function useNodeAttachment<Commands extends CommandMap>(
       }
       const entry = { element }
       attachedRef.current = entry
-      connect(element, committedOptions.current)
+      resolve()
       return () => detachRef(entry)
     },
-    [connect, detachRef, explicit],
+    [detachRef, explicit, resolve],
   )
 
-  const commitAttachment = useEffectEvent(() => {
-    const element =
-      target === undefined ? (attachedRef.current?.element ?? null) : readTarget(target)
-    connect(element, committedOptions.current)
-  })
   const observation = useRef<ReturnType<typeof observeTargetRef> | null>(null)
   useLayoutEffect(() => {
-    commitAttachment()
+    resolve()
     observation.current?.refresh()
   })
   useLayoutEffect(() => {
     // A target move can change the parent's node during key processing, before React renders.
-    return inherited?.subscribe(() => commitAttachment())
-  }, [inherited])
+    return inherited?.subscribe(resolve)
+  }, [inherited, resolve])
   useLayoutEffect(() => {
     if (!canAttach || !targetRef || !dispatcher) return
     const targetObserver = observeTargetRef(targetRef, (element) => {
-      if (element !== (binding.read()?.element ?? null)) commitAttachment()
+      if (element !== (binding.read()?.element ?? null)) resolve()
     })
     observation.current = targetObserver
     const stopListening = dispatcher.observeKeys({ beforeKey: targetObserver.refresh })
@@ -411,11 +415,11 @@ function useNodeAttachment<Commands extends CommandMap>(
       targetObserver.dispose()
       observation.current = null
     }
-  }, [binding, canAttach, dispatcher, targetRef])
+  }, [binding, canAttach, dispatcher, resolve, targetRef])
   useLayoutEffect(() => () => release(), [release])
 
   const node = canAttach && snapshot?.dispatcher === dispatcher ? snapshot.attachment.node : null
-  return { result: { ref, node, dispatcher }, scope: binding, rollbackRef }
+  return { result: { ref, node, dispatcher }, scope: childScope, rollbackRef }
 }
 
 function inheritedParent<Commands extends CommandMap>(
@@ -424,7 +428,7 @@ function inheritedParent<Commands extends CommandMap>(
   explicitParent: Node<Commands> | null | undefined,
 ): Node<Commands> | null | undefined {
   if (!scope) return explicitParent ?? null
-  const binding = scope.read()
+  const binding = scope.resolve()
   return binding?.dispatcher === dispatcher ? binding.attachment.node : undefined
 }
 

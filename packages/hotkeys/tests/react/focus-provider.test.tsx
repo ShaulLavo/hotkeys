@@ -991,3 +991,98 @@ it('offers scope handlers first and lets later context values win in a composed 
   expect(scopeCommand).toHaveBeenCalledOnce()
   expect(forwardedCommand).not.toHaveBeenCalled()
 })
+
+it('resolves a scope’s committed parent before attaching a keyed child', () => {
+  using dispatcher = createBrowserDispatcher()
+  const first = vi.fn()
+  const second = vi.fn()
+  const firstParent = dispatcher.createNode({ commands: { go: first } })
+  const secondParent = dispatcher.createNode({ commands: { go: second } })
+  const portal = document.createElement('div')
+
+  function Child({ switched }: { switched: boolean }) {
+    const { ref } = useFocusNode({})
+    const bind: React.RefCallback<HTMLButtonElement> = useCallback(
+      (element) => {
+        const detach = ref(element)
+        if (!element?.hasAttribute('data-switched')) return detach
+        const node = dispatcher.nodeForElement(element)
+        if (node) dispatcher.dispatchCommandFrom(node, 'go')
+        return detach
+      },
+      [ref],
+    )
+    return (
+      <button key={String(switched)} data-switched={switched ? '' : undefined} ref={bind}>
+        Child
+      </button>
+    )
+  }
+
+  function Owner({ switched }: { switched: boolean }) {
+    return createPortal(
+      <FocusScope parent={switched ? secondParent : firstParent}>
+        <Child switched={switched} />
+      </FocusScope>,
+      portal,
+    )
+  }
+
+  const app = (switched: boolean) => (
+    <HotkeysProvider dispatcher={dispatcher}>
+      <Owner switched={switched} />
+    </HotkeysProvider>
+  )
+  const view = render(app(false))
+  try {
+    view.rerender(app(true))
+    expect(first).not.toHaveBeenCalled()
+    expect(second).toHaveBeenCalledOnce()
+  } finally {
+    view.unmount()
+  }
+})
+
+it('offers added or re-added composed handlers after existing handlers', () => {
+  using dispatcher = createBrowserDispatcher({ keymap: [{ keys: 'F8', command: 'go' }] })
+  const calls: string[] = []
+
+  function Owner({ scopeOn, forwardedOn }: { scopeOn: boolean; forwardedOn: boolean }) {
+    const { ref } = useFocusNode({
+      commands: forwardedOn
+        ? {
+            go: () => {
+              calls.push('forwarded')
+              return false
+            },
+          }
+        : undefined,
+    })
+    return (
+      <FocusScope ref={ref} commands={scopeOn ? { go: () => void calls.push('scope') } : undefined}>
+        <button>Target</button>
+      </FocusScope>
+    )
+  }
+
+  const app = (scopeOn: boolean, forwardedOn: boolean) => (
+    <HotkeysProvider dispatcher={dispatcher}>
+      <Owner scopeOn={scopeOn} forwardedOn={forwardedOn} />
+    </HotkeysProvider>
+  )
+  const view = render(app(false, true))
+  const target = view.getByRole('button')
+  view.rerender(app(true, true))
+  press(target, 'F8', { code: 'F8' })
+  expect(calls.splice(0)).toEqual(['forwarded', 'scope'])
+
+  view.rerender(app(true, false))
+  view.rerender(app(true, true))
+  press(target, 'F8', { code: 'F8' })
+  expect(calls.splice(0)).toEqual(['scope'])
+
+  view.rerender(app(false, true))
+  view.rerender(app(true, true))
+  press(target, 'F8', { code: 'F8' })
+  expect(calls).toEqual(['forwarded', 'scope'])
+})

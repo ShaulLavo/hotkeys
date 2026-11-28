@@ -240,6 +240,14 @@ Passing both `dispatcher` and `keymap` (or owned options alongside `dispatcher`)
   - Multiple hooks attached to the same `(element, parent)` on one dispatcher share a single element-attached focus node, merge their contexts on every capture, and manage their own handlers independently.
 - `<FocusScope>`: wraps `useFocusNode`, renders a `<div>` accepting `ref`, `id`, `className`, and `children`, and provides its `node` to descendants. When `target` is omitted, `<FocusScope>` attaches immediately to its wrapper `<div>` through the callback `ref`. When `enabled={false}`, descendants inherit the ancestor scope.
 
+##### Composed focus registrations
+
+When multiple registrations share one `(element, parent)` on one dispatcher, the shared node merges their contexts in attachment order on every capture. Identifiers combine across active registrations, and later values overwrite earlier entries for the same key.
+
+The dispatcher tries handlers on the shared node in command registration order. If a handler returns `false`, the dispatcher tries the next handler for that command. Any other return value claims the command and stops dispatch. A handler keeps its position if its function changes while the command stays present. If a registration removes a handler and adds a new handler for that command later, the new handler registers at the end.
+
+When `target` is omitted, `<FocusScope>` attaches its wrapper `<div>` before it invokes its forwarded `ref`. A hook that uses that `ref` with the same parent joins after the scope, so the hook's context values merge after the scope's values. Scope handlers present when `<FocusScope>` attaches register before the hook's handlers. If `<FocusScope>` adds a handler for a command that a mounted forwarded hook already handles, the new handler runs after the hook's handler.
+
 #### `useHotkeysDispatcher()` and `usePendingChord()`
 
 - `useHotkeysDispatcher()` returns the active `BrowserDispatcher<Commands> | null`.
